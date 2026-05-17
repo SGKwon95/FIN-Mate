@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── KB Star Banking 브랜드 컬러 ─────────────────────── */
+  --color-kb-yellow:       #FFCC00;
+  --color-kb-yellow-dark:  #E6B800;
+  --color-kb-yellow-light: #FFF9CC;
+  --color-kb-navy:         #1A2B4A;
+  --color-kb-navy-light:   #2C4166;
+  --color-kb-gray:         #6B7280;
+  --color-kb-gray-light:   #F8F9FA;
+  --color-kb-gray-border:  #E5E7EB;
+  --color-kb-red:          #E53E3E;
+  --color-kb-blue:         #3182CE;
+  --color-kb-green:        #38A169;
+
+  /* ── 타이포그래피 ─────────────────────────────────────── */
+  --font-sans: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, monospace;
+
+  /* ── 그림자 ─────────────────────────────────────────── */
+  --shadow-card:       0 1px 4px 0 rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
+  --shadow-card-hover: 0 4px 14px 0 rgba(0,0,0,0.12);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--color-kb-gray-light);
+  color: var(--color-kb-navy);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
