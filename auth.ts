@@ -2,10 +2,10 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/prisma"
+import { authConfig } from "@/auth.config"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {
@@ -27,7 +27,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           partyAuth.passwordHash,
         )
         if (!isValid) {
-          // 실패 횟수 증가 (5회 초과 시 잠금은 별도 로직으로 구현 가능)
           await prisma.partyAuth.update({
             where: { authId: partyAuth.authId },
             data: { failedAttemptCount: { increment: 1 } },
@@ -35,7 +34,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null
         }
 
-        // 로그인 성공 — 마지막 로그인 시각 갱신
         await prisma.partyAuth.update({
           where: { authId: partyAuth.authId },
           data: { lastLoginAt: new Date(), failedAttemptCount: 0 },
@@ -49,14 +47,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    jwt({ token, user }) {
-      if (user) token.partyId = (user as { partyId?: string }).partyId
-      return token
-    },
-    session({ session, token }) {
-      session.user.partyId = token.partyId as string
-      return session
-    },
-  },
 })

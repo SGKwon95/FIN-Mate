@@ -1,5 +1,8 @@
-import { auth } from "@/auth"
+import NextAuth from "next-auth"
+import { authConfig } from "@/auth.config"
 import { NextResponse } from "next/server"
+
+const { auth } = NextAuth(authConfig)
 
 export default auth(function middleware(req) {
   const isLoggedIn = !!req.auth
@@ -16,6 +19,5 @@ export default auth(function middleware(req) {
 })
 
 export const config = {
-  // api, static, image, favicon, login 제외한 모든 경로에 미들웨어 적용
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 }
