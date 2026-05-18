@@ -2,6 +2,7 @@ import type { NextAuthConfig } from "next-auth"
 
 // Edge 런타임 호환 최소 설정 — bcrypt/prisma 미포함
 export const authConfig = {
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [],
