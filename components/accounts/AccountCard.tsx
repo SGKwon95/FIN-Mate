@@ -1,31 +1,30 @@
-import Link from "next/link"
-import { ChevronRight } from "lucide-react"
-import { formatKRW, formatAccountNumber } from "@/lib/formatters"
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
+import { formatKRW, formatAccountNumber } from "@/lib/formatters";
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
-  DEPOSIT:   "입출금",
-  LOAN:      "대출",
+  DEPOSIT: "입출금",
+  LOAN: "대출",
   OVERDRAFT: "마이너스통장",
-}
+};
 
 const PURPOSE_LABEL: Record<string, string> = {
-  GENERAL:    "일반",
-  SALARY:     "급여",
-  SAVINGS:    "저축",
-  UTILITY:    "공과금",
-  BUSINESS:   "사업",
+  GENERAL: "일반",
+  SALARY: "급여",
+  SAVINGS: "저축",
+  BUSINESS: "사업",
   INVESTMENT: "투자",
-}
+};
 
 type Props = {
-  accountId: string
-  accountNumber: string
-  accountType: string
-  accountPurpose: string | null
-  balance: string
-  openedDate: string
-  lastTransactionAt: string | null
-}
+  accountId: string;
+  accountNumber: string;
+  accountType: string;
+  accountPurpose: string | null;
+  balance: string;
+  openedDate: string;
+  lastTransactionAt: string | null;
+};
 
 export default function AccountCard({
   accountId,
@@ -36,8 +35,10 @@ export default function AccountCard({
   openedDate,
   lastTransactionAt,
 }: Props) {
-  const typeLabel = ACCOUNT_TYPE_LABEL[accountType] ?? accountType
-  const purposeLabel = accountPurpose ? (PURPOSE_LABEL[accountPurpose] ?? accountPurpose) : null
+  const typeLabel = ACCOUNT_TYPE_LABEL[accountType] ?? accountType;
+  const purposeLabel = accountPurpose
+    ? (PURPOSE_LABEL[accountPurpose] ?? accountPurpose)
+    : null;
 
   return (
     <Link
@@ -73,9 +74,15 @@ export default function AccountCard({
       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-kb-gray-border text-xs text-kb-gray">
         <span>개설일 {openedDate}</span>
         {lastTransactionAt && (
-          <span>최근거래 {new Date(lastTransactionAt).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}</span>
+          <span>
+            최근거래{" "}
+            {new Date(lastTransactionAt).toLocaleDateString("ko-KR", {
+              month: "2-digit",
+              day: "2-digit",
+            })}
+          </span>
         )}
       </div>
     </Link>
-  )
+  );
 }
