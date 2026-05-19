@@ -1,45 +1,45 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
-import { Eye, EyeOff, Star, AlertCircle } from "lucide-react"
-import type { Metadata } from "next"
+import { useState } from "react";
+import Link from "next/link";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { Eye, EyeOff, Star, AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [loginId, setLoginId] = useState("")
-  const [password, setPassword] = useState("")
-  const [showPw, setShowPw] = useState(false)
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
+  const router = useRouter();
+  const [loginId, setLoginId] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!loginId.trim() || !password) {
-      setError("아이디와 비밀번호를 입력해주세요.")
-      return
+      setError("아이디와 비밀번호를 입력해주세요.");
+      return;
     }
-    setError("")
-    setLoading(true)
+    setError("");
+    setLoading(true);
     try {
       const result = await signIn("credentials", {
         loginId: loginId.trim(),
         password,
         redirect: false,
-      })
+      });
       if (result?.error) {
-        setError("아이디 또는 비밀번호가 올바르지 않습니다.")
+        setError("아이디 또는 비밀번호가 올바르지 않습니다.");
       } else {
-        router.push("/dashboard")
-        router.refresh()
+        router.push("/dashboard");
+        router.refresh();
       }
     } catch {
-      setError("로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+      setError("로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="flex-1 flex flex-col">
@@ -48,7 +48,7 @@ export default function LoginPage() {
         <div className="flex items-center justify-center gap-2 mb-1">
           <Star className="fill-kb-navy text-kb-navy w-7 h-7" />
           <span className="text-kb-navy text-2xl font-bold tracking-tight">
-            KB Star Banking
+            SG Star Banking
           </span>
         </div>
         <p className="text-kb-navy/60 text-sm">안전하고 편리한 금융 서비스</p>
@@ -86,7 +86,11 @@ export default function LoginPage() {
                 onClick={() => setShowPw((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
               >
-                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPw ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             </div>
 
@@ -110,19 +114,27 @@ export default function LoginPage() {
 
           {/* 보조 링크 */}
           <div className="flex items-center justify-center gap-4 mt-4">
-            {["아이디 찾기", "비밀번호 찾기", "회원가입"].map((label, i, arr) => (
+            {["아이디 찾기", "비밀번호 찾기"].map((label, i, arr) => (
               <span key={label} className="flex items-center gap-4">
                 <button className="text-white/50 text-xs hover:text-white/80 transition-colors">
                   {label}
                 </button>
-                {i < arr.length - 1 && <span className="text-white/20 text-xs">|</span>}
+                {i < arr.length - 1 && (
+                  <span className="text-white/20 text-xs">|</span>
+                )}
               </span>
             ))}
+            <span className="text-white/20 text-xs">|</span>
+            <Link href="/register" className="text-white/50 text-xs hover:text-white/80 transition-colors">
+              회원가입
+            </Link>
           </div>
 
           {/* 개발용 힌트 */}
           <div className="mt-6 p-3.5 bg-white/5 rounded-xl border border-white/10">
-            <p className="text-white/40 text-[11px] text-center mb-1">개발용 테스트 계정</p>
+            <p className="text-white/40 text-[11px] text-center mb-1">
+              개발용 테스트 계정
+            </p>
             <p className="text-white/60 text-xs text-center font-mono">
               testuser&nbsp;&nbsp;/&nbsp;&nbsp;Test1234!
             </p>
@@ -130,5 +142,5 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

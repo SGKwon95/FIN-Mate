@@ -7,12 +7,12 @@ const { auth } = NextAuth(authConfig)
 export default auth(function middleware(req) {
   const isLoggedIn = !!req.auth
   const { pathname } = req.nextUrl
-  const isOnLogin = pathname === "/login"
+  const isPublic = pathname === "/login" || pathname === "/register"
 
-  if (!isLoggedIn && !isOnLogin) {
+  if (!isLoggedIn && !isPublic) {
     return NextResponse.redirect(new URL("/login", req.url))
   }
-  if (isLoggedIn && isOnLogin) {
+  if (isLoggedIn && isPublic) {
     return NextResponse.redirect(new URL("/dashboard", req.url))
   }
   return NextResponse.next()
