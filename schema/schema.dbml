@@ -6,7 +6,7 @@
 // 공통 코드 도메인
 // ============================================================
 
-Table common_code_group {
+Table 공통코드그룹 {
   그룹ID      varchar(50)  [pk]
   그룹명      varchar(100) [not null]
   설명        text
@@ -17,9 +17,9 @@ Table common_code_group {
   수정일시    timestamp    [not null, default: `CURRENT_TIMESTAMP`]
 }
 
-Table common_code {
+Table 공통코드 {
   코드ID      bigserial    [pk]
-  그룹ID      varchar(50)  [not null, ref: > common_code_group.그룹ID]
+  그룹ID      varchar(50)  [not null, ref: > 공통코드그룹.그룹ID]
   코드        varchar(50)  [not null]
   코드명      varchar(100) [not null]
   코드값      varchar(100)
@@ -41,8 +41,9 @@ Table common_code {
 // 고객 도메인 (Supertype / Subtype)
 // ============================================================
 
-Table party {
+Table 당사자 {
   당사자ID              uuid         [pk, default: `gen_random_uuid()`]
+  당사자번호            varchar(30)  [not null, unique]
   당사자명              varchar(100) [not null]
   당사자개인법인구분    varchar(20)  [not null, note: 'INDIVIDUAL / CORPORATE']
   당사자상태            varchar(20)  [not null, default: 'ACTIVE', note: 'ACTIVE / SUSPENDED / DORMANT / WITHDRAWN']
@@ -55,9 +56,9 @@ Table party {
   수정일시              timestamptz  [not null, default: `now()`]
 }
 
-Table individual {
+Table 개인고객 {
   개인고객ID               uuid         [pk, default: `gen_random_uuid()`]
-  당사자ID                 uuid         [not null, unique, ref: - party.당사자ID]
+  당사자ID                 uuid         [not null, unique, ref: - 당사자.당사자ID]
   개인고객전화번호         varchar(20)  [note: '휴대폰 번호 (예: 010-1234-5678)']
   개인고객이메일           varchar(200)
   개인고객CI               varchar(50)      [not null]
@@ -79,6 +80,16 @@ Table individual {
 
   개인고객상태            varchar(20)  [not null, default: 'ACTIVE', note: 'ACTIVE / SUSPENDED / DORMANT / WITHDRAWN']
 
+  // 기업뱅킹 (법인 소속 시만 사용, 나머지는 NULL)
+  법인ID                  uuid         [ref: > 법인고객.법인ID, note: '소속 법인 (기업뱅킹 사용자만)']
+  담당부서                varchar(100)
+  기업직급                varchar(100)
+  기업뱅킹역할            varchar(30)  [note: 'VIEWER / TRANSFER_REQUESTER / APPROVER / ADMIN']
+  기업뱅킹상태            varchar(20)  [note: 'ACTIVE / LOCKED / DISABLED. NULL=기업뱅킹 미사용']
+  로그인실패횟수          int
+  잠금일시                timestamptz
+  최종로그인일시          timestamptz
+
   생성자ID                uuid
   수정자ID                uuid
   생성일시                timestamptz  [not null, default: `now()`]
@@ -89,9 +100,9 @@ Table individual {
   }
 }
 
-Table corporate {
+Table 법인고객 {
   법인ID                  uuid         [pk, default: `gen_random_uuid()`]
-  당사자ID                uuid         [not null, unique, ref: - party.당사자ID]
+  당사자ID                uuid         [not null, unique, ref: - 당사자.당사자ID]
 
   // 기업 식별
   사업자등록번호          varchar(20)  [not null, note: '사업자등록번호']
@@ -99,10 +110,14 @@ Table corporate {
 
   // 기업 기본 정보
   기업유형                varchar(20)  [note: 'STOCK / LIMITED / COOPERATIVE / PUBLIC / OTHER']
-  업종코드                varchar(10)
+  업종코드                varchar(10)  [note: 'KSIC 세세분류 5자리 (예: 47111=슈퍼마켓)']
+  업태코드                varchar(10)  [note: 'KSIC 대분류 1자리 (예: G=도소매업)']
   설립일                  date
   결산월                  smallint     [note: '1–12']
   대표자명                varchar(100)
+  대표자전화번호          varchar(20)
+  대표자이메일            varchar(100)
+  대표자국적              varchar(3)   [note: 'ISO 3166-1 alpha-3 (예: KOR, USA)']
   자본금                  decimal(15,2)
 
   // 사업장 주소
@@ -130,9 +145,9 @@ Table corporate {
   수정일시                timestamptz  [not null, default: `now()`]
 }
 
-Table party_auth {
+Table 당사자인증 {
   인증ID                  uuid         [pk, default: `gen_random_uuid()`]
-  당사자ID                uuid         [not null, unique, ref: - party.당사자ID]
+  당사자ID                uuid         [not null, unique, ref: - 당사자.당사자ID]
 
   로그인ID                varchar(100) [not null, unique]
   비밀번호해시            varchar(255) [not null, note: 'bcrypt / argon2 해시']
@@ -162,12 +177,12 @@ Table party_auth {
 // 상품 도메인
 // ============================================================
 
-Table product {
+Table 상품 {
   상품ID                           uuid         [pk, default: `gen_random_uuid()`]
   상품명                           varchar(200) [not null]
   상품유형코드                     varchar(20)  [not null, note: 'common_code 참조 (그룹ID: PROD_TYPE) — DEPOSIT / LOAN']
   상태                             varchar(20)  [not null, default: 'ACTIVE', note: 'ACTIVE / INACTIVE / SUSPENDED']
-  출시일                           varchar(10)  [not null]
+  출시일                           varchar(8)  [not null]
   만료일                           date
 
   기간유형            varchar(20)   [not null, default: 'UNLIMITED', note: 'UNLIMITED=제한없음 / FIXED=고정 / FLEXIBLE=선택']
@@ -189,21 +204,21 @@ Table product {
   }
 }
 
-Table product_terms {
+Table 상품약관 {
   약관ID       uuid        [pk, default: `gen_random_uuid()`]
-  상품ID       uuid        [not null, ref: > product.상품ID]
+  상품ID       uuid        [not null, ref: > 상품.상품ID]
 
   // TYPE_SPECIFIC(상품별 약관)
   약관유형     varchar(30) [not null, note: 'BASIC / TYPE_SPECIFIC']
   버전         varchar(20) [not null]
-  시행일       varchar(10) [not null]
-  종료일       varchar(10) [note: 'NULL=현재 유효']
+  시행일       varchar(8) [not null]
+  종료일       varchar(8) [note: 'NULL=현재 유효']
   변경일시     timestamptz
   내용URL      text
   변경사유     text        [note: '버전 변경 사유 (예: 법령 개정, 약관 개선 등)']
 
   담당부서     varchar(100)
-  담당직원ID   uuid        [ref: > employee.직원ID]
+  담당직원ID   uuid        [ref: > 직원.직원ID]
 
   생성자ID     uuid
   수정자ID     uuid
@@ -215,15 +230,15 @@ Table product_terms {
   }
 }
 
-Table product_rate {
+Table 상품금리 {
   상품금리ID   uuid         [pk, default: `gen_random_uuid()`]
-  상품ID       uuid         [not null, ref: > product.상품ID]
+  상품ID       uuid         [not null, ref: > 상품.상품ID]
 
   금리유형     varchar(20)  [not null, note: 'BASE / SPREAD']
   금리구조     varchar(20)  [not null, default: 'FIXED', note: 'FIXED=고정 / VARIABLE=변동 / CONFIRMED=확정']
   금리         decimal(7,4) [not null]
-  적용시작일   varchar(10)  [not null]
-  적용종료일   varchar(10)  [note: 'NULL=현재 적용 중']
+  적용시작일   varchar(8)  [not null]
+  적용종료일   varchar(8)  [note: 'NULL=현재 적용 중']
 
   생성자ID     uuid         [not null]
   수정자ID     uuid
@@ -235,17 +250,17 @@ Table product_rate {
   }
 }
 
-Table product_rate_tier {
+Table 상품금리구간 {
   금리구간ID   uuid          [pk, default: `gen_random_uuid()`]
-  상품ID       uuid          [not null, ref: > product.상품ID]
+  상품ID       uuid          [not null, ref: > 상품.상품ID]
 
   구간유형     varchar(20)   [not null, note: 'AMOUNT / PERIOD']
   최솟값       decimal(15,2) [note: '구간 하한 (NULL=하한 없음)']
   최댓값       decimal(15,2) [note: '구간 상한 (NULL=상한 없음)']
   금리         decimal(7,4)  [not null]
 
-  적용시작일   varchar(10)   [not null]
-  적용종료일   varchar(10)   [note: 'NULL=현재 적용 중']
+  적용시작일   varchar(8)   [not null]
+  적용종료일   varchar(8)   [note: 'NULL=현재 적용 중']
 
   생성자ID     uuid
   수정자ID     uuid
@@ -257,16 +272,16 @@ Table product_rate_tier {
   }
 }
 
-Table product_rate_benefit {
+Table 상품우대금리 {
   우대금리ID    uuid         [pk, default: `gen_random_uuid()`]
-  상품ID        uuid         [not null, ref: > product.상품ID]
+  상품ID        uuid         [not null, ref: > 상품.상품ID]
 
   우대조건명    varchar(100) [not null, note: '우대 조건명 (예: 급여이체 고객)']
   우대금리      decimal(7,4) [not null, note: '우대 금리 (예: 0.002 = +0.2%)']
   조건설명      text         [note: '조건 상세']
 
-  적용시작일    varchar(10)  [not null]
-  적용종료일    varchar(10)  [note: 'NULL=현재 적용 중']
+  적용시작일    varchar(8)  [not null]
+  적용종료일    varchar(8)  [note: 'NULL=현재 적용 중']
 
   생성자ID      uuid
   수정자ID      uuid
@@ -278,9 +293,9 @@ Table product_rate_benefit {
   }
 }
 
-Table product_fee {
+Table 상품수수료 {
   수수료ID      uuid         [pk, default: `gen_random_uuid()`]
-  상품ID        uuid         [not null, ref: > product.상품ID]
+  상품ID        uuid         [not null, ref: > 상품.상품ID]
 
   수수료유형    varchar(30)  [not null, note: 'TRANSFER=이체 / WITHDRAWAL=출금 / DEPOSIT=입금 / EARLY_REPAYMENT=중도상환 / OTHER=기타']
   채널          varchar(20)  [not null, default: 'ALL', note: 'ALL / APP / ATM / TELLER / INTERNET']
@@ -292,8 +307,8 @@ Table product_fee {
   비율수수료    decimal(7,4)  [note: '예: 0.001 = 0.1%']
   면제조건      text          [note: '예: 급여계좌, VIP 등']
 
-  적용시작일    varchar(10)  [not null]
-  적용종료일    varchar(10)  [note: 'NULL=현재 적용 중']
+  적용시작일    varchar(8)  [not null]
+  적용종료일    varchar(8)  [note: 'NULL=현재 적용 중']
 
   생성자ID      uuid
   수정자ID      uuid
@@ -305,9 +320,9 @@ Table product_fee {
   }
 }
 
-Table deposit_detail {
+Table 예금상세 {
   예금상세ID            uuid         [pk, default: `gen_random_uuid()`]
-  상품ID                uuid         [not null, unique, ref: - product.상품ID]
+  상품ID                uuid         [not null, unique, ref: - 상품.상품ID]
 
   이자유형              varchar(10)  [not null, note: 'SIMPLE / COMPOUND']
   금리유형              varchar(10)  [not null, note: 'FIXED / VARIABLE']
@@ -318,6 +333,8 @@ Table deposit_detail {
   최소기간월수          int
   최대기간월수          int
   중도해지위약금율      decimal(7,4)
+  선납가능여부          boolean      [not null, default: false, note: '적금 전용']
+  이연가능여부          boolean      [not null, default: false, note: '적금 전용']
 
   생성자ID              uuid
   수정자ID              uuid
@@ -325,9 +342,9 @@ Table deposit_detail {
   수정일시              timestamptz  [not null, default: `now()`]
 }
 
-Table loan_detail {
+Table 대출상세 {
   대출상세ID          uuid         [pk, default: `gen_random_uuid()`]
-  상품ID              uuid         [not null, unique, ref: - product.상품ID]
+  상품ID              uuid         [not null, unique, ref: - 상품.상품ID]
 
   기준금리유형        varchar(20)  [not null, note: 'COFIX / CD91 / BASE_RATE / PRIME (실제 금리 값은 product_rate 참조)']
   이자유형            varchar(10)  [not null, note: 'SIMPLE=단리 / COMPOUND=복리']
@@ -370,22 +387,22 @@ FLEXIBLE	자유상환	납입 일정·금액을 자유롭게 선택
 // 계약·계좌 도메인
 // ============================================================
 
-Table contract {
+Table 계약 {
   계약ID                          uuid         [pk, default: `gen_random_uuid()`]
-  당사자ID                        uuid         [not null, ref: > party.당사자ID]
-  상품ID                          uuid         [not null, ref: > product.상품ID]
-  계약일                          varchar(10)  [not null]
-  실행일자                        varchar(10)  [note: '대출 실행일·예금 개시일. NULL=즉시 실행']
-  만기일                          varchar(10)  [note: '계약일 + 기간을 스냅샷으로 저장']
-  종료일자                        varchar(10)  [note: '실제 종료일. 중도해지 시 만기일과 다름']
+  당사자ID                        uuid         [not null, ref: > 당사자.당사자ID]
+  상품ID                          uuid         [not null, ref: > 상품.상품ID]
+  계약일                          varchar(8)  [not null]
+  계약실행일자                    varchar(8)  [note: '대출 실행일·예금 개시일. NULL=즉시 실행']
+  계약만기일                      varchar(8)  [note: '계약일 + 기간을 스냅샷으로 저장']
+  계약종료일자                    varchar(8)  [note: '실제 종료일. 중도해지 시 만기일과 다름']
   계약기간_개월                   smallint     [note: '계약기간(개월). 수시입출금 등 기간 없는 상품은 NULL']
-  계약금액                        decimal(15,2)
+  계약금액                        decimal(15,2) [note: '대출=대출원금 / 적금=총납입목표액 / 정기예금=예치원금 / 보통예금=NULL']
   인지세                          decimal(15,2) [note: '대출 계약 시 납부. 대출금액 구간별 차등']
   계약상태                        varchar(25)  [not null, default: 'ACTIVE', note: 'ACTIVE / CLOSED / WITHDRAWN / ILLEGALLY_TERMINATED']
   최종적용금리                    decimal(7,4) [not null, note: '계약 시점 확정 금리 (기준+가산-우대). product_rate 변동과 무관하게 보존']
 
-  지점ID                          uuid         [ref: > branch.지점ID, note: 'NULL=비대면(앱·인터넷)']
-  담당직원ID                      uuid         [ref: > employee.직원ID]
+  지점ID                          uuid         [ref: > 지점.지점ID, note: 'NULL=비대면(앱·인터넷)']
+  담당직원ID                      uuid         [ref: > 직원.직원ID]
   담당직원명                      varchar(100) [note: '스냅샷']
   계약서파일URL                   text
 
@@ -402,12 +419,14 @@ Table contract {
   }
 }
 
-Table contract_terms_agreement {
-  계약ID      uuid        [not null, ref: > contract.계약ID]
-  약관ID      uuid        [not null, ref: > product_terms.약관ID]
+Table 계약약관동의 {
+  계약ID      uuid        [not null, ref: > 계약.계약ID]
+  약관ID      uuid        [not null, ref: > 상품약관.약관ID]
 
-  동의일시    timestamptz [not null, default: `now()`]
-  동의방식    varchar(20) [not null, note: 'APP / PAPER / KIOSK']
+  약관동의일시    timestamptz [not null, default: `now()`]
+  약관동의방식    varchar(20) [not null, note: 'APP / PAPER / KIOSK']
+  계약방식       varchar(20) [not null, note: 'REMOTE=원격 / IN_PERSON=대면 / HYBRID=하이브리드']
+  약관동의시IP주소      inet        [note: '약관 동의 시점 IP (비대면 채널)']
 
   생성자ID    uuid
   수정자ID    uuid
@@ -420,9 +439,9 @@ Table contract_terms_agreement {
   }
 }
 
-Table contract_rate_benefit {
-  계약ID        uuid         [not null, ref: > contract.계약ID]
-  우대금리ID    uuid         [not null, ref: > product_rate_benefit.우대금리ID]
+Table 계약우대금리 {
+  계약ID        uuid         [not null, ref: > 계약.계약ID]
+  우대금리ID    uuid         [not null, ref: > 상품우대금리.우대금리ID]
 
   적용금리      decimal(7,4) [not null, note: '계약 당시 실제 적용된 우대금리 값 스냅샷']
 
@@ -437,17 +456,18 @@ Table contract_rate_benefit {
   }
 }
 
-Table account {
+Table 계좌 {
   계좌ID                  uuid          [pk, default: `gen_random_uuid()`]
   계좌번호                varchar(30)   [not null, unique]
   계좌비밀번호hash        varchar(50)   [not null]
-  당사자ID                uuid          [not null, ref: > party.당사자ID]
-  계약ID                  uuid          [ref: > contract.계약ID]
+  당사자ID                uuid          [not null, ref: > 당사자.당사자ID]
+  계약ID                  uuid          [ref: > 계약.계약ID]
   계좌유형                varchar(20)   [not null, note: 'DEPOSIT=예금 / LOAN=대출 / OVERDRAFT=마이너스통장']
   계좌상태                varchar(20)   [not null, default: 'ACTIVE', note: 'ACTIVE / DORMANT / SUSPENDED / CLOSED / FROZEN']
-  잔액                    decimal(15,2) [not null, default: 0]
+  마이너스한도            decimal(15,2) [note: '마이너스 통장 한도 (OVERDRAFT 전용. NULL=해당없음)']
+  잔액                    decimal(15,2) [not null, default: 0, note: 'OVERDRAFT는 음수 가능 (-한도 이상)']
   통화코드                char(3)       [not null, default: 'KRW']
-  개설일                  varchar(10)   [not null, default: `CURRENT_DATE`]
+  개설일                  varchar(8)   [not null, default: `CURRENT_DATE`]
   해지일                  date
   최종거래일시            timestamptz
 
@@ -482,17 +502,18 @@ Table account {
 }
 
 // 적금
-Table savings_payment {
+Table 적금납입 {
   적금납입ID      uuid          [pk, default: `gen_random_uuid()`]
-  계좌ID          uuid          [not null, ref: > account.계좌ID]
+  계약ID          uuid          [not null, ref: > 계약.계약ID]
+  계좌ID          uuid          [not null, ref: > 계좌.계좌ID]
 
   납입회차        smallint      [not null, note: '납입 회차 (1부터 시작)']
-  예정납입일      varchar(10)   [not null, note: '예정 납입일']
+  예정납입일      varchar(8)   [not null, note: '예정 납입일']
   약정납입금액    decimal(15,2) [not null, note: '약정 납입금액']
 
-  실제납입일      varchar(10)   [note: '실제 납입일']
+  실제납입일      varchar(8)   [note: '실제 납입일']
   실제납입금액    decimal(15,2) [note: '실제 납입금액']
-  거래ID          uuid          [ref: > transaction.거래ID, note: '실제 거래 연결 (NULL=미납)']
+  거래ID          uuid          [ref: > 거래내역.거래ID, note: '실제 거래 연결 (NULL=미납)']
 
   납입상태        varchar(20)   [not null, default: 'SCHEDULED', note: 'SCHEDULED / PAID / PARTIAL / MISSED']
 
@@ -503,37 +524,76 @@ Table savings_payment {
 
   indexes {
     (계좌ID, 납입회차) [unique]
+    계약ID
     계좌ID
     납입상태
   }
 }
 
-Table internal_account {
-  내부계좌ID          uuid          [pk, default: `gen_random_uuid()`]
-  내부계좌번호        varchar(30)   [not null, unique]
-  계약ID              uuid          [ref: > contract.계약ID]
-  내부계좌유형        varchar(30)   [not null, note: 'DEPOSIT / OVERDRAFT_LOAN / SEIZED_DEPOSIT / LOAN']
-  상태                varchar(20)   [not null, default: 'ACTIVE', note: 'ACTIVE / SUSPENDED / CLOSED / FROZEN']
-  한도                decimal(15,2) [note: 'OVERDRAFT_LOAN 전용. NULL=해당없음']
-  잔액                decimal(15,2) [not null, default: 0, note: 'OVERDRAFT_LOAN은 음수 가능 (-한도 이상)']
-  통화코드            char(3)       [not null, default: 'KRW']
-  개설일              varchar(10)   [not null, default: `CURRENT_DATE`]
-  해지일              date
+Table 거래실행지시 {
+  거래실행지시ID        uuid          [pk, default: `gen_random_uuid()`]
 
-  생성자ID    uuid
-  수정자ID    uuid
-  생성일시    timestamptz [not null, default: `now()`]
-  수정일시    timestamptz [not null, default: `now()`]
+  거래지시유형          varchar(30)   [not null, note: 'BULK_TRANSFER / NETWORK_INBOUND / NETWORK_OUTBOUND / AUTO_DEBIT / SCHEDULED']
+  거래지시상태          varchar(20)   [not null, default: 'PENDING', note: 'PENDING / PROCESSING / COMPLETED / PARTIAL / FAILED / CANCELLED']
+  이체구분          varchar(10)   [note: 'INTERBANK=타행이체 / INTRABANK=당행이체']
+  공동망구분        varchar(20)   [note: 'KFTC / CD_NETWORK / CMS / GIRO / INTERNAL']
+  전문일련번호      varchar(50)   [note: '공동망 전문 일련번호']
+  공동망응답코드    varchar(10)   [note: '게이트웨이 응답코드 (오픈뱅킹: A0000 / 기존망: 00)']
+  수취은행응답코드  varchar(10)   [note: '수취은행 응답코드 (오픈뱅킹: bank_rsp_code)']
+
+  총건수            int
+  성공건수          int           [not null, default: 0]
+  실패건수          int           [not null, default: 0]
+  총금액            decimal(15,2)
+
+  제출자ID          uuid          [ref: > 당사자.당사자ID]
+  승인자ID          uuid          [ref: > 당사자.당사자ID]
+  승인일시          timestamptz
+
+  예정실행일시      timestamptz
+  실제실행일시      timestamptz
+
+  적요              varchar(200)
+
+  생성자ID          uuid
+  수정자ID          uuid
+  생성일시          timestamptz   [not null, default: `now()`]
+  수정일시          timestamptz   [not null, default: `now()`]
 
   indexes {
-    계약ID
-    상태
+    거래지시유형
+    거래지시상태
+    공동망구분
   }
 }
 
-Table transaction {
+Table KFTC수신이력 {
+  수신이력ID          uuid          [pk, default: `gen_random_uuid()`]
+  거래실행지시ID      uuid          [not null, ref: > 거래실행지시.거래실행지시ID]
+
+  응답코드            varchar(10)   [not null, note: '오픈뱅킹 응답코드 (A0000=정상)']
+  응답메시지          varchar(200)
+  수취은행응답코드    varchar(10)
+  수취은행응답메시지  varchar(200)
+  핀테크이용번호      varchar(30)
+  은행거래고유번호    varchar(30)   [note: 'KFTC 채번 (예: M202607010001)']
+
+  수신일시            timestamptz   [not null, default: `now()`]
+
+  생성자ID            uuid
+  수정자ID            uuid
+  생성일시            timestamptz   [not null, default: `now()`]
+  수정일시            timestamptz   [not null, default: `now()`]
+
+  indexes {
+    거래실행지시ID
+    은행거래고유번호
+  }
+}
+
+Table 거래내역 {
   거래ID                  uuid          [pk, default: `gen_random_uuid()`]
-  계좌ID                  uuid          [not null, ref: > account.계좌ID]
+  계좌ID                  uuid          [not null, ref: > 계좌.계좌ID]
 
   거래유형                varchar(20)   [not null, note: 'DEPOSIT / WITHDRAWAL / TRANSFER_OUT / TRANSFER_IN / INTEREST / FEE']
   거래금액                decimal(15,2) [not null]
@@ -546,8 +606,8 @@ Table transaction {
   상대방계좌번호          varchar(30)
   상대방은행코드          varchar(10)
   상대방명                varchar(100)
-  상대방당사자ID          uuid          [ref: > party.당사자ID, note: '내부 고객인 경우 party 연결']
-  상대방계좌ID            uuid          [ref: > account.계좌ID, note: '동행 이체 시 계좌 직접 연결']
+  상대방당사자ID          uuid          [ref: > 당사자.당사자ID, note: '내부 고객인 경우 party 연결']
+  상대방계좌ID            uuid          [ref: > 계좌.계좌ID, note: '동행 이체 시 계좌 직접 연결']
   송금은행코드            varchar(10)   [note: '송금인 은행 코드 (상대방은행코드=수취인 은행과 구분)']
   받는사람표시            varchar(20)
   보내는사람표시          varchar(20)
@@ -555,17 +615,18 @@ Table transaction {
   거래번호                varchar(30)   [unique, note: '고객용 거래번호 (영수증·명세서 표시, 예: 20260515-000123)']
   거래키                  varchar(50)   [unique, note: '외부 시스템 통합용 고유 거래 키']
   참조번호                varchar(50)   [note: '금융결제원 거래 참조번호']
-  배치ID                  uuid          [note: '대량처리/정산 배치 그룹 ID']
+  거래실행지시ID              uuid          [ref: > 거래실행지시.거래실행지시ID, note: '대량이체·공동망 지시 연결']
 
-  수수료금액              decimal(15,2)
   세금금액                decimal(15,2) [note: '이자소득세 등']
 
   이체방식                varchar(20)   [note: 'REALTIME / AGGREGATE / NIGHT / SAME_DAY']
-  결제일                  varchar(10)   [note: '거래일자와 결제일이 다를 경우 (익영업일 결제 등)']
+  결제일                  varchar(8)   [note: '거래일자와 결제일이 다를 경우 (익영업일 결제 등)']
 
-  승인자ID                uuid          [ref: > employee.직원ID]
+  승인자ID                uuid          [ref: > 직원.직원ID]
   승인일시                timestamptz
   거절사유                varchar(200)
+
+  재시도횟수              smallint      [not null, default: 0]
 
   리스크스코어            decimal(5,2)
   이상거래여부            boolean       [not null, default: false]
@@ -575,7 +636,7 @@ Table transaction {
   적요                    varchar(200)
   사용자메모              text          [note: '고객 입력 메모 (적요보다 긴 메모용)']
 
-  거래일자                varchar(10)   [not null, default: `CURRENT_DATE`]
+  거래일자                varchar(8)   [not null, default: `CURRENT_DATE`]
   거래일시                timestamptz   [not null, default: `now()`]
 
   생성자ID                uuid
@@ -588,82 +649,22 @@ Table transaction {
     (거래일시)
     거래유형
     거래키 [unique]
-    배치ID
+    거래실행지시ID
     이상거래여부
     결제일
-  }
-}
-
-Table account_mapping {
-  매핑ID          uuid        [pk, default: `gen_random_uuid()`]
-  대표계좌ID      uuid        [not null, ref: > account.계좌ID]
-  내부계좌ID      uuid        [not null, ref: > internal_account.내부계좌ID]
-  매핑유형        varchar(30) [not null, note: 'GENERAL_DEPOSIT / OVERDRAFT_LOAN / SEIZED_DEPOSIT / LOAN']
-  상태코드        varchar(20) [not null, default: 'ACTIVE', note: 'ACTIVE / PAYMENT_SUSPENDED / SEIZED / CLOSED']
-  우선순위        smallint    [not null, default: 1, note: '1이 최우선']
-  효력발생일시    timestamptz [note: '효력 발생 일시 (압류 명령 송달 시간 등)']
-
-  생성자ID    uuid
-  수정자ID    uuid
-  생성일시    timestamptz [not null, default: `now()`]
-  수정일시    timestamptz [not null, default: `now()`]
-
-  indexes {
-    (대표계좌ID, 내부계좌ID) [unique]
-    대표계좌ID
-    내부계좌ID
-    상태코드
   }
 }
 
 
 // ============================================================
 // 기업뱅킹 도메인
-// ============================================================
 
-Table corporate_role_policy {
-  역할                varchar(30)   [pk, note: 'VIEWER / TRANSFER_REQUESTER / APPROVER / ADMIN']
-  이체요청가능여부    boolean       [not null, default: false]
-  승인가능여부        boolean       [not null, default: false]
-  건별이체한도        decimal(15,2) [note: 'NULL=무제한']
-  일일이체한도        decimal(15,2) [note: 'NULL=무제한']
-  생성자ID            uuid
-  수정자ID            uuid
-  생성일시            timestamptz   [not null, default: `now()`]
-  수정일시            timestamptz   [not null, default: `now()`]
-}
-
-Table corporate_user {
-  담당직원ID            uuid         [pk, default: `gen_random_uuid()`]
-  법인ID                uuid         [not null, ref: > corporate.법인ID]
-  담당직원이메일                varchar(255) [not null, unique]
-
-  담당직원명            varchar(100) [not null]
-  담당직원부서          varchar(100)
-  담당직원직급          varchar(100)
-  담당직원역할          varchar(30)  [not null, default: 'VIEWER', ref: > corporate_role_policy.역할]
-  담당직원상태          varchar(20)  [not null, default: 'ACTIVE', note: 'ACTIVE / LOCKED / DISABLED']
-
-  로그인실패횟수        int          [not null, default: 0]
-  잠금일시              timestamptz
-  최종로그인일시        timestamptz
-
-  생성자ID              uuid
-  수정자ID              uuid
-  생성일시              timestamptz  [not null, default: `now()`]
-  수정일시              timestamptz  [not null, default: `now()`]
-
-  indexes {
-    법인ID
-    담당직원이메일
-  }
-}
 
 // ============================================================
 // 인프라·조직 도메인
 // ============================================================
 
-Table branch {
+Table 지점 {
   지점ID       uuid         [pk, default: `gen_random_uuid()`]
   지점코드     varchar(10)  [not null, unique, note: '점포코드 (금융결제원 기준)']
   지점명       varchar(100) [not null]
@@ -695,10 +696,10 @@ Table branch {
 }
 
 
-Table employee {
+Table 직원 {
   직원ID       uuid         [pk, default: `gen_random_uuid()`]
-  지점ID       uuid         [not null, ref: > branch.지점ID]
-  당사자ID     uuid         [ref: > party.당사자ID, note: 'NULL=은행 고객이 아닌 직원']
+  지점ID       uuid         [not null, ref: > 지점.지점ID]
+  당사자ID     uuid         [ref: > 당사자.당사자ID, note: 'NULL=은행 고객이 아닌 직원']
 
   사번         varchar(20)  [not null, unique]
   이름         varchar(100) [not null]
@@ -709,7 +710,7 @@ Table employee {
   전화번호     varchar(20)
 
   직원상태     varchar(20)  [not null, default: 'ACTIVE', note: 'ACTIVE / ON_LEAVE / RESIGNED']
-  입사일       varchar(10)  [not null]
+  입사일       varchar(8)  [not null]
   퇴사일       date
 
   생성자ID     uuid
@@ -725,29 +726,93 @@ Table employee {
 
 
 // ============================================================
+// 파일·문서 도메인
+// ============================================================
+
+Table 문서 {
+  문서ID          uuid          [pk, default: `gen_random_uuid()`]
+
+  // 파일 저장 정보
+  원본파일명      varchar(255)  [not null]
+  저장파일명      varchar(255)
+  파일URL         text          [not null, note: 'S3 등 스토리지 경로']
+  파일크기        bigint        [note: 'bytes']
+  MIME타입        varchar(100)
+
+  업로드상태      varchar(20)   [not null, default: 'COMPLETED', note: 'PENDING / COMPLETED / FAILED']
+
+  업로더당사자ID  uuid          [ref: > 당사자.당사자ID]
+  업로드일시      timestamptz   [not null, default: `now()`]
+
+  연결대상유형    varchar(30)   [not null, note: 'LOAN_APPLICATION / CONTRACT / ACCOUNT / KYC / OTHER']
+  연결대상ID      uuid          [not null, note: '연결 대상 PK (entity_type에 따라 참조 테이블 다름)']
+
+  문서유형        varchar(50)   [not null, note: 'ID_CARD / LOAN_APPLICATION_FORM / DEBT_STATEMENT / INCOME_PROOF / CREDIT_INFO_CONSENT / EMPLOYMENT_CERT / PROPERTY_CERT / TAX_RETURN / BANK_STATEMENT / CONTRACT_COPY / OTHER']
+
+  확인여부        boolean       [not null, default: false]
+  확인직원ID      uuid          [ref: > 직원.직원ID]
+  확인일시        timestamptz
+
+  제출일시        timestamptz   [not null, default: `now()`]
+  제출자당사자ID  uuid          [ref: > 당사자.당사자ID]
+
+  생성자ID        uuid
+  수정자ID        uuid
+  생성일시        timestamptz   [not null, default: `now()`]
+  수정일시        timestamptz   [not null, default: `now()`]
+
+  indexes {
+    (연결대상유형, 연결대상ID)
+    업로더당사자ID
+  }
+}
+
+
+// ============================================================
 // 대출 신청 프로세스 도메인
 // ============================================================
-/*
-Table loan_application {
+
+Table 대출신청 {
   신청ID              uuid          [pk, default: `gen_random_uuid()`]
-  당사자ID            uuid          [not null, ref: > party.당사자ID]
-  상품ID              uuid          [not null, ref: > product.상품ID]
+  당사자ID            uuid          [not null, ref: > 당사자.당사자ID]
+  상품ID              uuid          [not null, ref: > 상품.상품ID]
 
   신청금액            decimal(15,2) [not null]
   신청기간월수        int
   대출목적            varchar(100)
 
-  신청상태            varchar(20)   [not null, default: 'DRAFT', note: 'DRAFT / SUBMITTED / REVIEWING / APPROVED / REJECTED / EXECUTED / CANCELLED']
+  // 본인 확인
+  본인확인여부        boolean       [not null, default: false]
+  대리권유무          boolean
+  대리인ID            uuid          [ref: > 당사자.당사자ID, note: '본인 신청 시 NULL']
+  신용조사위탁여부    boolean       [not null, default: false, note: 'FALSE=영업점 자체 / TRUE=심사부서 위탁']
+
+  신청상태            varchar(20)   [not null, default: 'DRAFT', note: 'DRAFT / SUBMITTED / CREDIT_CHECK / REVIEWING / APPROVED / PRE_EXECUTION / REJECTED / EXECUTED / CANCELLED']
 
   승인금액            decimal(15,2)
   승인금리            decimal(7,4)
   거절사유            varchar(500)
 
-  계약ID              uuid          [ref: > contract.계약ID, note: '실행 후 연결']
+  // 심사 검토 항목
+  신용심사결과        text          [note: '차주 적격성 (자격, 신용상태, 거래상황)']
+  자금적정성검토      text          [note: '소요자금 적정성']
+  담보검토            text          [note: '채권보전 방법 (보증인, 담보)']
+  기여도검토          text          [note: '기여도 및 금리']
+  여신등급            varchar(10)   [note: 'A / B / C / D 등']
+
+  // 전결권자
+  전결권자ID          uuid          [ref: > 직원.직원ID]
+  승인일시            timestamptz
+
+  계약ID              uuid          [ref: > 계약.계약ID, note: '실행 후 연결']
 
   신청채널            varchar(20)   [note: 'APP / INTERNET / BRANCH / PHONE']
-  지점ID              uuid          [ref: > branch.지점ID]
-  담당직원ID          uuid          [ref: > employee.직원ID]
+  지점ID              uuid          [ref: > 지점.지점ID]
+  담당직원ID          uuid          [ref: > 직원.직원ID]
+
+  // 상담 기록
+  상담일              date
+  상담메모            text
 
   제출일시            timestamptz
   결정일시            timestamptz
@@ -764,16 +829,20 @@ Table loan_application {
   }
 }
 
-Table loan_approval_step {
+Table 대출심사단계 {
   단계ID          uuid         [pk, default: `gen_random_uuid()`]
-  신청ID          uuid         [not null, ref: > loan_application.신청ID]
+  신청ID          uuid         [not null, ref: > 대출신청.신청ID]
 
   단계순서        smallint     [not null, note: '1부터 시작']
-  심사직원ID      uuid         [not null, ref: > employee.직원ID]
+  심사직원ID      uuid         [not null, ref: > 직원.직원ID]
 
   단계상태        varchar(20)  [not null, default: 'PENDING', note: 'PENDING / APPROVED / REJECTED / SKIPPED']
   의견            text
   결정일시        timestamptz
+
+  // 전결 권한
+  전결권한레벨    int           [note: '높을수록 상위 결재권자']
+  전결권자직급    varchar(100)  [note: '스냅샷']
 
   생성자ID        uuid
   수정자ID        uuid
@@ -786,31 +855,9 @@ Table loan_approval_step {
   }
 }
 
-Table loan_document {
-  서류ID          uuid         [pk, default: `gen_random_uuid()`]
-  신청ID          uuid         [not null, ref: > loan_application.신청ID]
-
-  서류유형        varchar(50)  [not null, note: 'ID_CARD / INCOME_PROOF / EMPLOYMENT_CERT / PROPERTY_CERT / TAX_RETURN / BANK_STATEMENT / OTHER']
-  파일명          varchar(255)
-  파일URL         text
-
-  확인여부        boolean      [not null, default: false]
-  확인직원ID      uuid         [ref: > employee.직원ID]
-  확인일시        timestamptz
-
-  생성자ID        uuid
-  수정자ID        uuid
-  생성일시        timestamptz  [not null, default: `now()`]
-  수정일시        timestamptz  [not null, default: `now()`]
-
-  indexes {
-    신청ID
-  }
-}
-
-Table loan_collateral {
+Table 대출담보 {
   담보ID          uuid          [pk, default: `gen_random_uuid()`]
-  신청ID          uuid          [not null, ref: > loan_application.신청ID]
+  신청ID          uuid          [not null, ref: > 대출신청.신청ID]
 
   담보유형        varchar(30)   [not null, note: 'REAL_ESTATE / DEPOSIT / SECURITIES / VEHICLE / OTHER']
 
@@ -822,6 +869,14 @@ Table loan_collateral {
   감정기관명      varchar(100)
   근저당설정금액  decimal(15,2)
 
+  // 담보 평가 이력
+  자체평가여부    boolean       [not null, default: false, note: 'FALSE=집중화센터 위탁 / TRUE=영업점 자체평가']
+  감정요청일시    timestamptz
+  감정완료일시    timestamptz
+  저당권설정일    date
+  저당권등기번호  varchar(50)
+  채권보전확인    boolean       [not null, default: false, note: '채권보전(저당권설정) 완료 확인 — 여신실행 전 true여야 함']
+
   생성자ID        uuid
   수정자ID        uuid
   생성일시        timestamptz   [not null, default: `now()`]
@@ -831,11 +886,11 @@ Table loan_collateral {
     신청ID
   }
 }
-*/
 
-Table loan_delinquency {
+
+Table 대출연체 {
   연체ID          uuid          [pk, default: `gen_random_uuid()`]
-  계약ID          uuid          [not null, ref: > contract.계약ID]
+  계약ID          uuid          [not null, ref: > 계약.계약ID]
 
   연체상태        varchar(20)   [not null, note: 'OVERDUE=연체 / DEFAULT=부도 / RECOVERED=정상화']
 
@@ -843,8 +898,14 @@ Table loan_delinquency {
   연체이자        decimal(15,2) [not null, default: 0]
   연체일수        int           [not null]
 
-  연체시작일      varchar(10)   [not null]
-  정상화일        varchar(10)   [note: 'NULL=현재 연체 중']
+  연체시작일      varchar(8)   [not null]
+  정상화일        varchar(8)   [note: 'NULL=현재 연체 중']
+
+  // 사후관리
+  유용의심여부    boolean       [not null, default: false, note: '용도 외 유용']
+  유용내용        text
+  회수방식        varchar(20)   [note: 'SELF=자기회수 / GUARANTEE=보증인회수 / LEGAL=법적회수 / WRITE_OFF=파산정리']
+  연장이력        json          [note: '기간 연장 이력']
 
   생성자ID        uuid
   수정자ID        uuid
@@ -854,39 +915,5 @@ Table loan_delinquency {
   indexes {
     계약ID
     연체상태
-  }
-}
-
-
-// ============================================================
-// 로그·감사 도메인
-// ============================================================
-
-Table audit_log {
-  감사ID                  uuid         [pk, default: `gen_random_uuid()`]
-  테이블명                varchar(100) [not null]
-  레코드ID                uuid         [not null]
-  작업유형                varchar(10)  [not null, note: 'INSERT / UPvarchar(10) / DELETE']
-  이전값                  json
-  변경값                  json
-  변경자ID                uuid         [not null]
-  변경일시                timestamptz  [not null, default: `now()`]
-
-  준법감시필요여부        boolean      [not null, default: false]
-  준법감시승인여부        boolean
-  준법감시승인자ID        uuid
-  준법감시승인일시        timestamptz
-
-  IP주소                  varchar(45)
-  세션ID                  varchar(100)
-
-  생성자ID                uuid
-  수정자ID                uuid
-  생성일시                timestamptz  [not null, default: `now()`]
-  수정일시                timestamptz  [not null, default: `now()`]
-
-  indexes {
-    (테이블명, 레코드ID)
-    (변경일시)
   }
 }
