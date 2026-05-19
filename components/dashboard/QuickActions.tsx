@@ -1,21 +1,32 @@
-import Link from "next/link"
+import Link from "next/link";
 import {
   ArrowLeftRight,
   ClipboardList,
-  Zap,
-  TrendingUp,
   MoreHorizontal,
   PiggyBank,
-  CreditCard,
-} from "lucide-react"
+} from "lucide-react";
 
 const ACTIONS = [
-  { label: "이체",   icon: ArrowLeftRight, href: "/transfer",           color: "text-kb-navy" },
-  { label: "내계좌", icon: ClipboardList,  href: "/accounts",           color: "text-kb-navy" },
-  { label: "공과금", icon: Zap,            href: "/transfer?type=bill", color: "text-kb-navy" },
-  { label: "적금",   icon: PiggyBank,      href: "/products?type=savings", color: "text-kb-navy" },
-  { label: "더보기", icon: MoreHorizontal, href: "#",                   color: "text-kb-gray" },
-]
+  {
+    label: "이체",
+    icon: ArrowLeftRight,
+    href: "/transfer",
+    color: "text-kb-navy",
+  },
+  {
+    label: "내계좌",
+    icon: ClipboardList,
+    href: "/accounts",
+    color: "text-kb-navy",
+  },
+  {
+    label: "적금",
+    icon: PiggyBank,
+    href: "/products?type=savings",
+    color: "text-kb-navy",
+  },
+  { label: "더보기", icon: MoreHorizontal, href: "#", color: "text-kb-gray" },
+];
 
 export default function QuickActions() {
   return (
@@ -38,5 +49,5 @@ export default function QuickActions() {
         ))}
       </div>
     </section>
-  )
+  );
 }

@@ -1,31 +1,34 @@
-import Link from "next/link"
-import { ChevronRight, Wallet } from "lucide-react"
-import { formatKRW, maskAccountNumber } from "@/lib/formatters"
+import Link from "next/link";
+import { ChevronRight, Wallet } from "lucide-react";
+import { formatKRW, maskAccountNumber } from "@/lib/formatters";
 
 type AccountItem = {
-  accountId: string
-  accountNumber: string
-  accountType: string
-  accountPurpose: string | null
-  balance: string // Decimal을 문자열로 직렬화
-}
+  accountId: string;
+  accountNumber: string;
+  accountType: string;
+  accountPurpose: string | null;
+  balance: string; // Decimal을 문자열로 직렬화
+};
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
-  DEPOSIT:   "입출금",
-  LOAN:      "대출",
+  DEPOSIT: "입출금",
+  LOAN: "대출",
   OVERDRAFT: "마이너스통장",
-}
+};
 
 const PURPOSE_LABEL: Record<string, string> = {
-  GENERAL:    "일반",
-  SALARY:     "급여",
-  SAVINGS:    "저축",
-  UTILITY:    "공과금",
-  BUSINESS:   "사업",
+  GENERAL: "일반",
+  SALARY: "급여",
+  SAVINGS: "저축",
+  BUSINESS: "사업",
   INVESTMENT: "투자",
-}
+};
 
-export default function AccountSummaryCard({ accounts }: { accounts: AccountItem[] }) {
+export default function AccountSummaryCard({
+  accounts,
+}: {
+  accounts: AccountItem[];
+}) {
   if (accounts.length === 0) {
     return (
       <section className="bg-white rounded-2xl p-5 shadow-card">
@@ -35,7 +38,7 @@ export default function AccountSummaryCard({ accounts }: { accounts: AccountItem
           <p>등록된 계좌가 없습니다.</p>
         </div>
       </section>
-    )
+    );
   }
 
   return (
@@ -90,5 +93,5 @@ export default function AccountSummaryCard({ accounts }: { accounts: AccountItem
         ))}
       </ul>
     </section>
-  )
+  );
 }
