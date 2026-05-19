@@ -10,8 +10,8 @@ const notoSansKR = Noto_Sans_KR({
 
 export const metadata: Metadata = {
   title: {
-    default: "KB Star Banking",
-    template: "%s | KB Star Banking",
+    default: "SG Star Banking",
+    template: "%s | SG Star Banking",
   },
   description: "국민은행 인터넷뱅킹",
 }
