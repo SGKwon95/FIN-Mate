@@ -38,6 +38,7 @@ export default function TransferWizard({ accounts }: { accounts: Account[] }) {
   const [memo, setMemo] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
   const [doneId, setDoneId] = useState("")
+  const [idempotencyKey, setIdempotencyKey] = useState("")
 
   const fromAccount = accounts.find((a) => a.accountId === fromId)
   const amount = Number(amountStr.replace(/,/g, ""))
@@ -57,6 +58,7 @@ export default function TransferWizard({ accounts }: { accounts: Account[] }) {
     const err = validate()
     if (err) { setErrorMsg(err); return }
     setErrorMsg("")
+    setIdempotencyKey(crypto.randomUUID())
     setStep("confirm")
   }
 
@@ -68,6 +70,7 @@ export default function TransferWizard({ accounts }: { accounts: Account[] }) {
         toName: toName.trim(),
         amount,
         memo: memo.trim() || undefined,
+        idempotencyKey,
       })
       if (res.ok) {
         setDoneId(res.transactionId)

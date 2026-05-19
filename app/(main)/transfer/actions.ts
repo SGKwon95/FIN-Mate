@@ -14,14 +14,24 @@ export async function executeTransfer(input: {
   toName: string
   amount: number
   memo?: string
+  idempotencyKey: string
 }): Promise<TransferResult> {
   const session = await auth()
   if (!session?.user?.partyId) redirect("/login")
 
-  const { fromAccountId, toAccountNumber, toName, amount, memo } = input
+  const { fromAccountId, toAccountNumber, toName, amount, memo, idempotencyKey } = input
 
   if (!Number.isInteger(amount) || amount <= 0) {
     return { ok: false, message: "유효하지 않은 금액입니다." }
+  }
+
+  // 멱등성 체크 — 동일 키로 이미 처리된 거래는 기존 결과 반환
+  const existing = await prisma.transaction.findUnique({
+    where: { transactionKey: idempotencyKey },
+    select: { transactionId: true },
+  })
+  if (existing) {
+    return { ok: true, transactionId: existing.transactionId }
   }
 
   // 출금 계좌 확인 (본인 소유 + 활성 상태)
@@ -49,6 +59,7 @@ export async function executeTransfer(input: {
   const now = new Date()
   const txDate = now.toISOString().slice(0, 10).replace(/-/g, "")
   const txNo = `TX${Date.now()}`
+  const txKey = idempotencyKey
 
   // DB 트랜잭션으로 원자적 처리
   const result = await prisma.$transaction(async (tx) => {
@@ -75,6 +86,7 @@ export async function executeTransfer(input: {
         counterpartName:        toName,
         counterpartyAccountId:  toAccount?.accountId ?? null,
         transactionNo:          txNo,
+        transactionKey:         txKey,
         remark:                 toName,
         memo:                   memo ?? null,
         transactionDate:        txDate,
