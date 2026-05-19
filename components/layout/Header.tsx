@@ -1,18 +1,23 @@
-import Link from "next/link"
-import { Star, Bell, LogOut } from "lucide-react"
-import { auth, signOut } from "@/auth"
+import Link from "next/link";
+import { Star, Bell, LogOut } from "lucide-react";
+import { auth, signOut } from "@/auth";
 
 export default async function Header() {
-  const session = await auth()
-  const userName = session?.user?.name ?? "고객"
+  const session = await auth();
+  const userName = session?.user?.name ?? "고객";
 
   return (
     <header className="sticky top-0 z-40 bg-kb-yellow">
       <div className="flex items-center justify-between h-14 px-4 max-w-screen-xl mx-auto">
         {/* 로고 */}
-        <Link href="/dashboard" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+        >
           <Star className="fill-kb-navy text-kb-navy w-5 h-5" />
-          <span className="text-kb-navy font-bold text-[17px] tracking-tight">KB Star</span>
+          <span className="text-kb-navy font-bold text-[17px] tracking-tight">
+            SG Star
+          </span>
         </Link>
 
         {/* 우측 액션 */}
@@ -31,8 +36,8 @@ export default async function Header() {
           {/* 로그아웃 — Server Action */}
           <form
             action={async () => {
-              "use server"
-              await signOut({ redirectTo: "/login" })
+              "use server";
+              await signOut({ redirectTo: "/login" });
             }}
           >
             <button
@@ -46,5 +51,5 @@ export default async function Header() {
         </div>
       </div>
     </header>
-  )
+  );
 }

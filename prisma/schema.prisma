@@ -529,7 +529,7 @@ model ContractRateBenefit {
 model Account {
   accountId                  String    @id @default(dbgenerated("gen_random_uuid()")) @map("account_id") @db.Uuid
   accountNumber              String    @unique @map("account_number") @db.VarChar(30)
-  accountPasswordHash        String    @map("account_password_hash") @db.VarChar(50)
+  accountPasswordHash        String    @map("account_password_hash") @db.VarChar(60)
   partyId                    String    @map("party_id") @db.Uuid
   contractId                 String?   @map("contract_id") @db.Uuid
   accountType                String    @map("account_type") @db.VarChar(20)
