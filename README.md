@@ -1,18 +1,22 @@
-# FIN-Mate — KB Star Banking 모바일 뱅킹 클론
+# FIN-Mate — SG Star Banking 모바일 뱅킹 클론
 
-Next.js 15 App Router 기반의 KB Star Banking 스타일 금융 서비스 웹앱입니다.
+Next.js 15 App Router 기반의 SG Star Banking 스타일 금융 서비스 웹앱입니다.
+
+## 일정표 및 RAW 데이터
+
+[링크](https://docs.google.com/spreadsheets/d/1tIi7CB2FVE8Y2MPfnZwHhe5HgwiIH48ggV7e40yNLUU/edit?usp=sharing)
 
 ## 기술 스택
 
-| 영역 | 기술 |
-|---|---|
-| 프레임워크 | Next.js 15 (App Router) |
-| 언어 | TypeScript |
-| 스타일 | Tailwind CSS v4 |
-| ORM | Prisma 7 + PostgreSQL |
-| 인증 | NextAuth v5 (JWT, Credentials) |
-| 아이콘 | Lucide React |
-| 폰트 | Noto Sans KR |
+| 영역       | 기술                           |
+| ---------- | ------------------------------ |
+| 프레임워크 | Next.js 15 (App Router)        |
+| 언어       | TypeScript                     |
+| 스타일     | Tailwind CSS v4                |
+| ORM        | Prisma 7 + PostgreSQL          |
+| 인증       | NextAuth v5 (JWT, Credentials) |
+| 아이콘     | Lucide React                   |
+| 폰트       | Noto Sans KR                   |
 
 ## 시작하기
 
@@ -51,9 +55,9 @@ npm run dev
 
 `http://localhost:3000` 접속 후 아래 테스트 계정으로 로그인합니다.
 
-| 항목 | 값 |
-|---|---|
-| 아이디 | `testuser` |
+| 항목     | 값          |
+| -------- | ----------- |
+| 아이디   | `testuser`  |
 | 비밀번호 | `Test1234!` |
 
 ## 주요 기능
@@ -102,7 +106,7 @@ npm run db:seed                          # 시드 데이터 삽입
 
 ## 브랜드 컬러
 
-| 이름 | 값 |
-|---|---|
+| 이름        | 값        |
+| ----------- | --------- |
 | `kb-yellow` | `#FFCC00` |
-| `kb-navy` | `#1A2B4A` |
+| `kb-navy`   | `#1A2B4A` |
