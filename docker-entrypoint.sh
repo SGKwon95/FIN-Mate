@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-echo "▶ Running DB migrations..."
-npx prisma migrate deploy
+echo "▶ Syncing DB schema..."
+npx prisma db push --accept-data-loss
 
 if [ "$SEED_DB" = "true" ]; then
   echo "▶ Seeding database..."
