@@ -14,6 +14,16 @@ type Account = {
   balance: string
 }
 
+type Recipient = {
+  accountNumber: string
+  name: string
+}
+
+type Bank = {
+  code: string
+  name: string
+}
+
 type Step = "form" | "confirm" | "done"
 
 const ACCOUNT_LABEL: Record<string, string> = {
@@ -22,11 +32,20 @@ const ACCOUNT_LABEL: Record<string, string> = {
   SAVING:  "적금",
 }
 
+
 function accountLabel(acc: Account) {
   return ACCOUNT_LABEL[acc.accountPurpose ?? ""] ?? acc.accountType
 }
 
-export default function TransferWizard({ accounts }: { accounts: Account[] }) {
+export default function TransferWizard({
+  accounts,
+  recentRecipients,
+  banks,
+}: {
+  accounts: Account[]
+  recentRecipients: Recipient[]
+  banks: Bank[]
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -34,6 +53,7 @@ export default function TransferWizard({ accounts }: { accounts: Account[] }) {
   const [fromId, setFromId] = useState(accounts[0]?.accountId ?? "")
   const [toNumber, setToNumber] = useState("")
   const [toName, setToName] = useState("")
+  const [bankCode, setBankCode] = useState(banks[0]?.code ?? "")
   const [amountStr, setAmountStr] = useState("")
   const [memo, setMemo] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
@@ -68,6 +88,7 @@ export default function TransferWizard({ accounts }: { accounts: Account[] }) {
         fromAccountId: fromId,
         toAccountNumber: toNumber.replace(/-/g, ""),
         toName: toName.trim(),
+        bankCode,
         amount,
         memo: memo.trim() || undefined,
         idempotencyKey,
@@ -143,7 +164,9 @@ export default function TransferWizard({ accounts }: { accounts: Account[] }) {
           <Row label="받는 계좌">
             <span className="text-right">
               <span className="block text-sm font-semibold text-kb-navy">{toName}</span>
-              <span className="block text-xs text-kb-gray font-mono">{toNumber}</span>
+              <span className="block text-xs text-kb-gray font-mono">
+                {banks.find((b) => b.code === bankCode)?.name} {toNumber}
+              </span>
             </span>
           </Row>
           <Row label="이체 금액">
@@ -201,9 +224,41 @@ export default function TransferWizard({ accounts }: { accounts: Account[] }) {
           )}
         </div>
 
+        {/* 최근 이체 계좌 */}
+        {recentRecipients.length > 0 && (
+          <div>
+            <p className="text-xs text-kb-gray font-medium mb-2 px-1">최근 이체</p>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {recentRecipients.map((r) => (
+                <button
+                  key={r.accountNumber}
+                  onClick={() => { setToNumber(r.accountNumber); setToName(r.name) }}
+                  className={`shrink-0 flex flex-col items-center gap-1 px-4 py-2.5 rounded-2xl border text-left transition-colors ${
+                    toNumber === r.accountNumber
+                      ? "border-kb-navy bg-kb-navy/5"
+                      : "border-kb-gray-border bg-white"
+                  }`}
+                >
+                  <span className="text-xs font-semibold text-kb-navy truncate max-w-18">{r.name}</span>
+                  <span className="text-[10px] text-kb-gray font-mono">{maskAccountNumber(r.accountNumber)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 받는 계좌 */}
         <div className="bg-white rounded-2xl shadow-card p-4 space-y-3">
           <p className="text-xs text-kb-gray font-medium">받는 계좌</p>
+          <select
+            value={bankCode}
+            onChange={(e) => setBankCode(e.target.value)}
+            className="w-full bg-transparent text-sm text-kb-navy border-b border-kb-gray-border pb-2 outline-none"
+          >
+            {banks.map((b) => (
+              <option key={b.code} value={b.code}>{b.name}</option>
+            ))}
+          </select>
           <input
             type="text"
             inputMode="numeric"

@@ -67,6 +67,7 @@ model Party {
   contracts            Contract[]
   loanApplications     LoanApplication[]
   counterpartyTxns     Transaction[] @relation("CounterpartyPartyTxns")
+  notifications        Notification[]
 
   @@map("party")
 }
@@ -872,6 +873,27 @@ model LoanDelinquency {
   @@index([contractId], map: "idx_loan_delinquency_contract")
   @@index([delinquencyStatus], map: "idx_loan_delinquency_status")
   @@map("loan_delinquency")
+}
+
+// ============================================================
+// 27. 알림
+// ============================================================
+model Notification {
+  notificationId String   @id @default(dbgenerated("gen_random_uuid()")) @map("notification_id") @db.Uuid
+  partyId        String   @map("party_id") @db.Uuid
+  type           String   @db.VarChar(50)   // TRANSFER_OUT | TRANSFER_IN | LOW_BALANCE | ACCOUNT_LOCKED | SAVINGS_DUE | SAVINGS_PAID | SAVINGS_MATURITY | RISK_ALERT
+  title          String   @db.VarChar(200)
+  body           String   @db.VarChar(500)
+  isRead         Boolean  @default(false) @map("is_read")
+  linkedEntityId String?  @map("linked_entity_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  party Party @relation(fields: [partyId], references: [partyId])
+
+  @@index([partyId, isRead], map: "idx_notification_party_read")
+  @@index([createdAt(sort: Desc)], map: "idx_notification_created_at")
+  @@map("notification")
 }
 
 // ============================================================

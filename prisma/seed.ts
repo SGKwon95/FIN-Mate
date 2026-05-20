@@ -14,6 +14,7 @@ async function main() {
   console.log("🌱 DB 시딩 시작...");
 
   // ── 기존 데이터 초기화 (역참조 순서) ──────────────────
+  await prisma.notification.deleteMany();
   await prisma.transaction.deleteMany();
   await prisma.account.deleteMany();
   await prisma.partyAuth.deleteMany();
@@ -872,6 +873,12 @@ async function main() {
       },
       {
         groupId: "ACCOUNT_PURPOSE",
+        code: "TIME_DEPOSIT",
+        codeName: "정기예금",
+        sortOrder: 4,
+      },
+      {
+        groupId: "ACCOUNT_PURPOSE",
         code: "BUSINESS",
         codeName: "사업자",
         sortOrder: 5,
@@ -1439,21 +1446,49 @@ async function main() {
   console.log("  ✔ 로그인 계정: testuser / Test1234!");
 
   // ── 5. 금융 상품 ───────────────────────────────────────
+  const timeDepositProduct = await prisma.product.create({
+    data: {
+      productName: "SG 스타 정기예금",
+      productTypeCode: "DEPOSIT",
+      launchDate: new Date("2020-01-10"),
+      productStatus: "ACTIVE",
+      isDepositInsured: true,
+      depositInsuranceLimit: 50_000_000,
+      salesTarget: "INDIVIDUAL",
+      periodType: "FIXED",
+      contractPeriodMonths: 12,
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+
+  await prisma.depositDetail.create({
+    data: {
+      productId: timeDepositProduct.productId,
+      interestType: "SIMPLE",
+      rateType: "FIXED",
+      transactionType: "TIME_DEPOSIT",
+      minAmount: 100_000,
+      maxAmount: 1_000_000_000,
+      minPeriodMonths: 6,
+      maxPeriodMonths: 36,
+      earlyWithdrawalPenaltyRate: 0.005,
+    },
+  });
+
+  await prisma.productRate.create({
+    data: {
+      productId: timeDepositProduct.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.035,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
   await prisma.product.createMany({
     data: [
-      {
-        productName: "SG 스타 정기예금",
-        productTypeCode: "DEPOSIT",
-        launchDate: new Date("2020-01-10"),
-        productStatus: "ACTIVE",
-        isDepositInsured: true,
-        depositInsuranceLimit: 50_000_000,
-        salesTarget: "INDIVIDUAL",
-        periodType: "FIXED",
-        contractPeriodMonths: 12,
-        createdBy: ADMIN_UUID,
-        updatedBy: ADMIN_UUID,
-      },
       {
         productName: "SG 내맘대로 적금",
         productTypeCode: "DEPOSIT",
@@ -1491,6 +1526,7 @@ async function main() {
       },
     ],
   });
+  console.log("  ✔ 상품 4개 생성 (정기예금·적금·주담대·신용대출)");
 
   // ── 6. 계좌 ───────────────────────────────────────────
   const accountPwHash = await bcrypt.hash("1234", 10);
@@ -1607,7 +1643,7 @@ async function main() {
       balA: 6_529_450,
       name: "회사",
       remark: "5월 급여",
-      date: "2026-05-25",
+      date: "2026-05-10",
       ch: "AUTO",
     },
     {
@@ -1617,7 +1653,7 @@ async function main() {
       balA: 5_029_450,
       name: "이영희",
       remark: "월세",
-      date: "2026-05-26",
+      date: "2026-05-11",
       ch: "APP",
     },
     {
@@ -1627,7 +1663,7 @@ async function main() {
       balA: 2_500_000,
       name: "KB적금",
       remark: "적금이체",
-      date: "2026-05-27",
+      date: "2026-05-12",
       ch: "AUTO",
     },
   ];

@@ -3,6 +3,7 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
+import { createNotification } from "@/lib/notifications"
 
 export type TransferResult =
   | { ok: true; transactionId: string }
@@ -12,6 +13,7 @@ export async function executeTransfer(input: {
   fromAccountId: string
   toAccountNumber: string
   toName: string
+  bankCode?: string
   amount: number
   memo?: string
   idempotencyKey: string
@@ -19,7 +21,7 @@ export async function executeTransfer(input: {
   const session = await auth()
   if (!session?.user?.partyId) redirect("/login")
 
-  const { fromAccountId, toAccountNumber, toName, amount, memo, idempotencyKey } = input
+  const { fromAccountId, toAccountNumber, toName, bankCode, amount, memo, idempotencyKey } = input
 
   if (!Number.isInteger(amount) || amount <= 0) {
     return { ok: false, message: "유효하지 않은 금액입니다." }
@@ -83,6 +85,7 @@ export async function executeTransfer(input: {
         transactionStatus:      "COMPLETED",
         channel:                "MOBILE",
         counterpartAccountNumber: toAccountNumber,
+        counterpartBankCode:    bankCode ?? null,
         counterpartName:        toName,
         counterpartyAccountId:  toAccount?.accountId ?? null,
         transactionNo:          txNo,
@@ -125,8 +128,46 @@ export async function executeTransfer(input: {
       })
     }
 
-    return outTx.transactionId
+    return { transactionId: outTx.transactionId, balanceAfter }
   })
 
-  return { ok: true, transactionId: result }
+  const amountStr = amount.toLocaleString("ko-KR")
+
+  // 출금 알림 (송신자)
+  await createNotification({
+    partyId: session.user.partyId,
+    type: "TRANSFER_OUT",
+    title: "이체 완료",
+    body: `${toName}님께 ${amountStr}원을 이체했습니다.`,
+    linkedEntityId: result.transactionId,
+  })
+
+  // 잔액 부족 알림 (이체 후 잔액 < 100,000원)
+  if (result.balanceAfter < 100_000) {
+    await createNotification({
+      partyId: session.user.partyId,
+      type: "LOW_BALANCE",
+      title: "잔액 부족 안내",
+      body: `이체 후 잔액이 ${result.balanceAfter.toLocaleString("ko-KR")}원입니다.`,
+    })
+  }
+
+  // 입금 알림 (수신자 — 내부 계좌인 경우)
+  if (toAccount?.accountStatus === "ACTIVE") {
+    const toParty = await prisma.account.findUnique({
+      where: { accountId: toAccount.accountId },
+      select: { partyId: true },
+    })
+    if (toParty) {
+      await createNotification({
+        partyId: toParty.partyId,
+        type: "TRANSFER_IN",
+        title: "입금 완료",
+        body: `${session.user.name ?? "상대방"}님으로부터 ${amountStr}원이 입금되었습니다.`,
+        linkedEntityId: result.transactionId,
+      })
+    }
+  }
+
+  return { ok: true, transactionId: result.transactionId }
 }

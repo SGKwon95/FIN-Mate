@@ -1,10 +1,15 @@
 import Link from "next/link";
-import { Star, Bell, LogOut } from "lucide-react";
+import { Star, LogOut } from "lucide-react";
 import { auth, signOut } from "@/auth";
+import { getUnreadCount } from "@/lib/notifications";
+import NotificationBell from "@/components/layout/NotificationBell";
 
 export default async function Header() {
   const session = await auth();
   const userName = session?.user?.name ?? "고객";
+  const unreadCount = session?.user?.partyId
+    ? await getUnreadCount(session.user.partyId)
+    : 0;
 
   return (
     <header className="sticky top-0 z-40 bg-kb-yellow">
@@ -28,10 +33,7 @@ export default async function Header() {
           </span>
 
           {/* 알림 */}
-          <button className="relative p-2 rounded-lg hover:bg-kb-navy/10 transition-colors">
-            <Bell className="w-5 h-5 text-kb-navy" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
-          </button>
+          <NotificationBell initialUnreadCount={unreadCount} />
 
           {/* 로그아웃 — Server Action */}
           <form

@@ -35,10 +35,47 @@ export default async function TransferPage() {
     )
   }
 
+  // 최근 이체한 수신자 (중복 제거, 최대 5명)
+  const recentTxs = await prisma.transaction.findMany({
+    where: {
+      account: { partyId: session.user.partyId },
+      transactionType: "TRANSFER_OUT",
+      counterpartAccountNumber: { not: null },
+    },
+    orderBy: { transactedAt: "desc" },
+    take: 30,
+    select: { counterpartAccountNumber: true, counterpartName: true },
+  })
+
+  const seen = new Set<string>()
+  const recentRecipients = recentTxs
+    .filter((tx) => {
+      if (!tx.counterpartAccountNumber || seen.has(tx.counterpartAccountNumber)) return false
+      seen.add(tx.counterpartAccountNumber)
+      return true
+    })
+    .slice(0, 5)
+    .map((tx) => ({
+      accountNumber: tx.counterpartAccountNumber!,
+      name: tx.counterpartName ?? "",
+    }))
+
+  const bankCodes = await prisma.commonCode.findMany({
+    where: { groupId: "BANK_CODE" },
+    orderBy: { sortOrder: "asc" },
+    select: { code: true, codeName: true },
+  })
+
   const serialized = accounts.map((a) => ({
     ...a,
     balance: a.balance.toFixed(0),
   }))
 
-  return <TransferWizard accounts={serialized} />
+  return (
+    <TransferWizard
+      accounts={serialized}
+      recentRecipients={recentRecipients}
+      banks={bankCodes.map((b) => ({ code: b.code, name: b.codeName }))}
+    />
+  )
 }
