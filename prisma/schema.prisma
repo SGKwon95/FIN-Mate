@@ -250,6 +250,7 @@ model Product {
   salesTarget           String   @default("ALL") @map("sales_target") @db.VarChar(20)
   isDepositInsured      Boolean  @default(false) @map("is_deposit_insured")
   depositInsuranceLimit Decimal? @map("deposit_insurance_limit") @db.Decimal(15, 2)
+  description           String?  @db.Text
   createdBy             String   @map("created_by") @db.Uuid
   updatedBy             String   @map("updated_by") @db.Uuid
   createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
