@@ -1,44 +1,153 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Home, CreditCard, ArrowLeftRight, TrendingUp, Settings } from "lucide-react"
-import { cn } from "@/lib/utils"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import {
+  Home,
+  CreditCard,
+  History,
+  ArrowLeftRight,
+  Settings,
+  Search,
+  ChevronDown,
+  Landmark,
+  PiggyBank,
+  Banknote,
+  TrendingUp,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", icon: Home,            label: "홈" },
-  { href: "/accounts",  icon: CreditCard,       label: "내 계좌" },
-  { href: "/transfer",  icon: ArrowLeftRight,   label: "이체" },
-  { href: "/products",  icon: TrendingUp,       label: "상품" },
-  { href: "/settings",  icon: Settings,         label: "설정" },
-]
+type NavLeaf = {
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+};
+type NavGroup = {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  basePath?: string;
+  children: NavLeaf[];
+};
+type NavItem = NavLeaf | NavGroup;
+
+function isGroup(item: NavItem): item is NavGroup {
+  return "children" in item;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "/dashboard", icon: Home, label: "홈" },
+  {
+    label: "조회",
+    icon: Search,
+    children: [
+      { href: "/accounts", icon: CreditCard, label: "내 계좌" },
+      { href: "/transactions", icon: History, label: "거래내역" },
+    ],
+  },
+  { href: "/transfer", icon: ArrowLeftRight, label: "이체" },
+  {
+    label: "상품",
+    icon: TrendingUp,
+    basePath: "/products",
+    children: [
+      { href: "/products/deposit", icon: Landmark, label: "정기예금" },
+      { href: "/products/savings", icon: PiggyBank, label: "적금" },
+      { href: "/products/loan",    icon: Banknote,  label: "대출" },
+    ],
+  },
+  { href: "/settings", icon: Settings, label: "설정" },
+];
 
 export default function Sidebar() {
-  const pathname = usePathname()
+  const pathname = usePathname();
+  const [openGroups, setOpenGroups] = useState<string[]>([]);
+
+  function toggleGroup(label: string) {
+    setOpenGroups((prev) =>
+      prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label],
+    );
+  }
 
   return (
     <aside className="hidden lg:flex flex-col w-52 bg-white border-r border-kb-gray-border shrink-0">
       <nav className="flex-1 py-5 px-2.5 space-y-1">
-        {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+        {NAV_ITEMS.map((item) => {
+          if (isGroup(item)) {
+            const isGroupActive =
+              (item.basePath ? pathname.startsWith(item.basePath) : false) ||
+              item.children.some((c) => pathname.startsWith(c.href));
+            // 자식 경로가 활성이면 항상 열림, 아니면 수동 토글
+            const isOpen = isGroupActive || openGroups.includes(item.label);
+
+            return (
+              <div key={item.label}>
+                <button
+                  onClick={() => toggleGroup(item.label)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+                    isGroupActive
+                      ? "bg-kb-yellow text-kb-navy font-semibold shadow-sm"
+                      : "text-kb-gray hover:bg-kb-gray-light hover:text-kb-navy",
+                  )}
+                >
+                  <item.icon className="w-4.5 h-4.5 shrink-0" />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <ChevronDown
+                    className={cn(
+                      "w-4 h-4 transition-transform duration-200",
+                      isOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+
+                {isOpen && (
+                  <div className="mt-1 ml-3 pl-3 border-l-2 border-kb-gray-border space-y-0.5">
+                    {item.children.map((child) => {
+                      const isActive =
+                        pathname === child.href ||
+                        pathname.startsWith(child.href);
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all",
+                            isActive
+                              ? "bg-kb-navy/10 text-kb-navy font-semibold"
+                              : "text-kb-gray hover:bg-kb-gray-light hover:text-kb-navy",
+                          )}
+                        >
+                          <child.icon className="w-4 h-4 shrink-0" />
+                          {child.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
           const isActive =
-            pathname === href ||
-            (href !== "/dashboard" && pathname.startsWith(href))
+            pathname === item.href ||
+            (item.href !== "/dashboard" && pathname.startsWith(item.href));
 
           return (
             <Link
-              key={href}
-              href={href}
+              key={item.href}
+              href={item.href}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
                 isActive
                   ? "bg-kb-yellow text-kb-navy font-semibold shadow-sm"
-                  : "text-kb-gray hover:bg-kb-gray-light hover:text-kb-navy"
+                  : "text-kb-gray hover:bg-kb-gray-light hover:text-kb-navy",
               )}
             >
-              <Icon className="w-[18px] h-[18px] shrink-0" />
-              {label}
+              <item.icon className="w-4.5 h-4.5 shrink-0" />
+              {item.label}
             </Link>
-          )
+          );
         })}
       </nav>
 
@@ -48,5 +157,5 @@ export default function Sidebar() {
         </p>
       </div>
     </aside>
-  )
+  );
 }

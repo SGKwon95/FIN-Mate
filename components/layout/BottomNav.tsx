@@ -2,15 +2,15 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, CreditCard, ArrowLeftRight, TrendingUp, Settings } from "lucide-react"
+import { Home, ArrowLeftRight, TrendingUp, Settings, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
-  { href: "/dashboard", icon: Home,          label: "홈" },
-  { href: "/accounts",  icon: CreditCard,    label: "계좌" },
-  { href: "/transfer",  icon: ArrowLeftRight, label: "이체" },
-  { href: "/products",  icon: TrendingUp,    label: "상품" },
-  { href: "/settings",  icon: Settings,      label: "설정" },
+  { href: "/dashboard",        icon: Home,           label: "홈",  match: "/dashboard" },
+  { href: "/accounts",         icon: Search,         label: "조회", match: ["/accounts", "/transactions"] },
+  { href: "/transfer",         icon: ArrowLeftRight, label: "이체", match: "/transfer" },
+  { href: "/products/deposit", icon: TrendingUp,     label: "상품", match: "/products" },
+  { href: "/settings",         icon: Settings,       label: "설정", match: "/settings" },
 ]
 
 export default function BottomNav() {
@@ -19,10 +19,9 @@ export default function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-kb-gray-border lg:hidden safe-area-pb">
       <div className="flex h-14">
-        {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
-          const isActive =
-            pathname === href ||
-            (href !== "/dashboard" && pathname.startsWith(href))
+        {NAV_ITEMS.map(({ href, icon: Icon, label, match }) => {
+          const patterns = Array.isArray(match) ? match : [match]
+          const isActive = patterns.some(p => pathname === p || pathname.startsWith(p + "/") || pathname === p)
 
           return (
             <Link
