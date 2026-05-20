@@ -1,18 +1,18 @@
-import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
-import { redirect } from "next/navigation"
-import { formatKRW } from "@/lib/formatters"
-import { TrendingUp } from "lucide-react"
-import AccountSummaryCard from "@/components/dashboard/AccountSummaryCard"
-import QuickActions from "@/components/dashboard/QuickActions"
-import ProductBanner from "@/components/dashboard/ProductBanner"
-import type { Metadata } from "next"
+import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { formatKRW } from "@/lib/formatters";
+import { TrendingUp } from "lucide-react";
+import AccountSummaryCard from "@/components/dashboard/AccountSummaryCard";
+import QuickActions from "@/components/dashboard/QuickActions";
+import ProductBanner from "@/components/dashboard/ProductBanner";
+import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "홈" }
+export const metadata: Metadata = { title: "홈" };
 
 export default async function DashboardPage() {
-  const session = await auth()
-  if (!session?.user?.partyId) redirect("/login")
+  const session = await auth();
+  if (!session?.user?.partyId) redirect("/login");
 
   const [accounts, products] = await Promise.all([
     prisma.account.findMany({
@@ -23,11 +23,11 @@ export default async function DashboardPage() {
       },
       orderBy: { displayOrder: "asc" },
       select: {
-        accountId:     true,
+        accountId: true,
         accountNumber: true,
-        accountType:   true,
+        accountType: true,
         accountPurpose: true,
-        balance:       true,
+        balance: true,
       },
     }),
     prisma.product.findMany({
@@ -36,15 +36,15 @@ export default async function DashboardPage() {
       orderBy: { launchDate: "desc" },
       select: { productId: true, productName: true, productTypeCode: true },
     }),
-  ])
+  ]);
 
-  const totalBalance = accounts.reduce((sum, a) => sum + Number(a.balance), 0)
+  const totalBalance = accounts.reduce((sum, a) => sum + Number(a.balance), 0);
 
   // Decimal → string 직렬화 (Server→Server 사이라도 명시적으로 변환)
   const serializedAccounts = accounts.map((a) => ({
     ...a,
     balance: a.balance.toFixed(0),
-  }))
+  }));
 
   return (
     <div className="max-w-2xl lg:max-w-none">
@@ -54,10 +54,6 @@ export default async function DashboardPage() {
         <p className="text-white text-[2rem] font-bold mt-1 tracking-tight tabular-nums">
           {formatKRW(totalBalance)}
         </p>
-        <div className="flex items-center gap-1 mt-2">
-          <TrendingUp className="w-3.5 h-3.5 text-kb-yellow" />
-          <span className="text-kb-yellow text-xs font-medium">전월 대비 +2.1%</span>
-        </div>
       </div>
 
       {/* ── 카드 영역 ────────────────────────────── */}
@@ -67,5 +63,5 @@ export default async function DashboardPage() {
         <ProductBanner products={products} />
       </div>
     </div>
-  )
+  );
 }
