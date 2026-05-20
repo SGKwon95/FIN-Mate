@@ -67,7 +67,7 @@ export default function ProductBanner({
     <section className="bg-white rounded-2xl shadow-card overflow-hidden">
       {/* 헤더 */}
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-kb-gray-border">
-        <h2 className="text-kb-navy font-bold text-base">SG 추천 상품</h2>
+        <h2 className="text-kb-navy font-bold text-base">추천 상품</h2>
         <Link
           href="/products"
           className="flex items-center gap-0.5 text-kb-gray text-xs hover:text-kb-navy transition-colors"
