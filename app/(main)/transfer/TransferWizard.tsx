@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, CheckCircle, ChevronRight, AlertCircle } from "lucide-react"
+import { ArrowLeft, CheckCircle, ChevronRight, AlertCircle, Clock } from "lucide-react"
 import { formatKRW, maskAccountNumber } from "@/lib/formatters"
 import { executeTransfer } from "./actions"
 
@@ -58,6 +58,7 @@ export default function TransferWizard({
   const [memo, setMemo] = useState("")
   const [errorMsg, setErrorMsg] = useState("")
   const [doneId, setDoneId] = useState("")
+  const [doneStatus, setDoneStatus] = useState<"COMPLETED" | "PENDING">("COMPLETED")
   const [idempotencyKey, setIdempotencyKey] = useState("")
 
   const fromAccount = accounts.find((a) => a.accountId === fromId)
@@ -95,6 +96,7 @@ export default function TransferWizard({
       })
       if (res.ok) {
         setDoneId(res.transactionId)
+        setDoneStatus(res.status)
         setStep("done")
       } else {
         setErrorMsg(res.message)
@@ -111,14 +113,27 @@ export default function TransferWizard({
 
   // ── 렌더 ────────────────────────────────────────────
   if (step === "done") {
+    const isPendingTransfer = doneStatus === "PENDING"
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-        <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-        <h2 className="text-xl font-bold text-kb-navy mb-1">이체 완료</h2>
+        {isPendingTransfer ? (
+          <Clock className="w-16 h-16 text-yellow-500 mb-4" />
+        ) : (
+          <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
+        )}
+        <h2 className="text-xl font-bold text-kb-navy mb-1">
+          {isPendingTransfer ? "이체 처리 중" : "이체 완료"}
+        </h2>
         <p className="text-kb-gray text-sm mb-2">
           <span className="font-semibold text-kb-navy">{formatKRW(amount)}</span>을<br />
           {toName}님에게 보냈습니다.
         </p>
+        {isPendingTransfer && (
+          <p className="text-xs text-kb-gray/80 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2.5 mb-2">
+            타행 이체는 공동망을 통해 처리 중입니다.<br />
+            잠시 후 거래내역에서 결과를 확인하세요.
+          </p>
+        )}
         <p className="text-xs text-kb-gray/60 mb-8">처리번호 {doneId.slice(0, 8).toUpperCase()}</p>
         <div className="flex gap-3 w-full max-w-xs">
           <button

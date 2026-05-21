@@ -4,9 +4,12 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { createNotification } from "@/lib/notifications"
+import { getProducer, TOPICS } from "@/lib/kafka"
+
+const OWN_BANK_CODE = "004"
 
 export type TransferResult =
-  | { ok: true; transactionId: string }
+  | { ok: true; transactionId: string; status: "COMPLETED" | "PENDING" }
   | { ok: false; message: string }
 
 export async function executeTransfer(input: {
@@ -27,19 +30,27 @@ export async function executeTransfer(input: {
     return { ok: false, message: "유효하지 않은 금액입니다." }
   }
 
-  // 멱등성 체크 — 동일 키로 이미 처리된 거래는 기존 결과 반환
+  // 멱등성 체크
   const existing = await prisma.transaction.findUnique({
     where: { transactionKey: idempotencyKey },
-    select: { transactionId: true },
+    select: { transactionId: true, transactionStatus: true },
   })
   if (existing) {
-    return { ok: true, transactionId: existing.transactionId }
+    const status = existing.transactionStatus === "PENDING" ? "PENDING" : "COMPLETED"
+    return { ok: true, transactionId: existing.transactionId, status }
   }
 
   // 출금 계좌 확인 (본인 소유 + 활성 상태)
   const fromAccount = await prisma.account.findUnique({
     where: { accountId: fromAccountId },
-    select: { accountId: true, partyId: true, balance: true, accountStatus: true, isLocked: true, accountNumber: true },
+    select: {
+      accountId: true,
+      partyId: true,
+      balance: true,
+      accountStatus: true,
+      isLocked: true,
+      accountNumber: true,
+    },
   })
 
   if (!fromAccount || fromAccount.partyId !== session.user.partyId) {
@@ -52,52 +63,122 @@ export async function executeTransfer(input: {
     return { ok: false, message: "잔액이 부족합니다." }
   }
 
-  // 받는 계좌가 내부 계좌인지 확인
+  const isExternal = bankCode !== OWN_BANK_CODE
+
+  const now = new Date()
+  const txDate = now.toISOString().slice(0, 10).replace(/-/g, "")
+  const txNo = `TX${Date.now()}`
+
+  // ── 타행 이체 (Kafka 공동망) ────────────────────────────────
+  if (isExternal) {
+    const result = await prisma.$transaction(async (tx) => {
+      const balanceBefore = Number(fromAccount.balance)
+      const balanceAfter = balanceBefore - amount
+
+      await tx.account.update({
+        where: { accountId: fromAccountId },
+        data: { balance: balanceAfter, lastTransactionAt: now },
+      })
+
+      const outTx = await tx.transaction.create({
+        data: {
+          accountId:                fromAccountId,
+          transactionType:          "TRANSFER_OUT",
+          amount:                   amount,
+          balanceBefore:            balanceBefore,
+          balanceAfter:             balanceAfter,
+          transactionStatus:        "PENDING",
+          channel:                  "MOBILE",
+          counterpartAccountNumber: toAccountNumber,
+          counterpartBankCode:      bankCode ?? null,
+          counterpartName:          toName,
+          transactionNo:            txNo,
+          transactionKey:           idempotencyKey,
+          remark:                   toName,
+          memo:                     memo ?? null,
+          transactionDate:          txDate,
+          transactedAt:             now,
+        },
+      })
+
+      return { transactionId: outTx.transactionId, balanceAfter }
+    })
+
+    // 공동망으로 이체 요청 발행
+    try {
+      const producer = await getProducer()
+      await producer.send({
+        topic: TOPICS.TRANSFER_REQUESTS,
+        messages: [{
+          key: result.transactionId,
+          value: JSON.stringify({
+            transactionId:    result.transactionId,
+            transactionNo:    txNo,
+            fromBankCode:     OWN_BANK_CODE,
+            fromAccountNumber: fromAccount.accountNumber,
+            fromPartyName:    session.user.name ?? "",
+            toBankCode:       bankCode,
+            toAccountNumber:  toAccountNumber,
+            toAccountName:    toName,
+            amount,
+            memo:             memo ?? null,
+            requestedAt:      now.toISOString(),
+          }),
+        }],
+      })
+    } catch (e) {
+      // Kafka 발행 실패 시 로그만 남기고 계속 (추후 재처리 가능)
+      console.error("[Kafka] 이체 요청 발행 실패:", e)
+    }
+
+    await createNotification({
+      partyId: session.user.partyId,
+      type: "TRANSFER_OUT",
+      title: "이체 처리 중",
+      body: `${toName}님께 ${amount.toLocaleString("ko-KR")}원 이체 요청이 접수되었습니다.`,
+      linkedEntityId: result.transactionId,
+    })
+
+    return { ok: true, transactionId: result.transactionId, status: "PENDING" }
+  }
+
+  // ── 자행 이체 (동기 처리) ────────────────────────────────────
   const toAccount = await prisma.account.findUnique({
     where: { accountNumber: toAccountNumber },
     select: { accountId: true, partyId: true, accountStatus: true, balance: true },
   })
 
-  const now = new Date()
-  const txDate = now.toISOString().slice(0, 10).replace(/-/g, "")
-  const txNo = `TX${Date.now()}`
-  const txKey = idempotencyKey
-
-  // DB 트랜잭션으로 원자적 처리
   const result = await prisma.$transaction(async (tx) => {
     const balanceBefore = Number(fromAccount.balance)
     const balanceAfter = balanceBefore - amount
 
-    // 출금 계좌 잔액 차감
     await tx.account.update({
       where: { accountId: fromAccountId },
       data: { balance: balanceAfter, lastTransactionAt: now },
     })
 
-    // 출금 트랜잭션 기록
     const outTx = await tx.transaction.create({
       data: {
-        accountId:              fromAccountId,
-        transactionType:        "TRANSFER_OUT",
-        amount:                 amount,
-        balanceBefore:          balanceBefore,
-        balanceAfter:           balanceAfter,
-        transactionStatus:      "COMPLETED",
-        channel:                "MOBILE",
+        accountId:                fromAccountId,
+        transactionType:          "TRANSFER_OUT",
+        amount:                   amount,
+        balanceBefore:            balanceBefore,
+        balanceAfter:             balanceAfter,
+        transactionStatus:        "COMPLETED",
+        channel:                  "MOBILE",
         counterpartAccountNumber: toAccountNumber,
-        counterpartBankCode:    bankCode ?? null,
-        counterpartName:        toName,
-        counterpartyAccountId:  toAccount?.accountId ?? null,
-        transactionNo:          txNo,
-        transactionKey:         txKey,
-        remark:                 toName,
-        memo:                   memo ?? null,
-        transactionDate:        txDate,
-        transactedAt:           now,
+        counterpartBankCode:      bankCode ?? null,
+        counterpartName:          toName,
+        counterpartyAccountId:    toAccount?.accountId ?? null,
+        transactionNo:            txNo,
+        transactionKey:           idempotencyKey,
+        remark:                   toName,
+        memo:                     memo ?? null,
+        transactionDate:          txDate,
+        transactedAt:             now,
       },
     })
 
-    // 내부 계좌인 경우 입금 처리
     if (toAccount && toAccount.accountStatus === "ACTIVE") {
       const toBalanceBefore = Number(toAccount.balance)
       const toBalanceAfter = toBalanceBefore + amount
@@ -109,21 +190,21 @@ export async function executeTransfer(input: {
 
       await tx.transaction.create({
         data: {
-          accountId:              toAccount.accountId,
-          transactionType:        "TRANSFER_IN",
-          amount:                 amount,
-          balanceBefore:          toBalanceBefore,
-          balanceAfter:           toBalanceAfter,
-          transactionStatus:      "COMPLETED",
-          channel:                "MOBILE",
+          accountId:                toAccount.accountId,
+          transactionType:          "TRANSFER_IN",
+          amount:                   amount,
+          balanceBefore:            toBalanceBefore,
+          balanceAfter:             toBalanceAfter,
+          transactionStatus:        "COMPLETED",
+          channel:                  "MOBILE",
           counterpartAccountNumber: fromAccount.accountNumber,
-          counterpartName:        session.user.name ?? "이체",
-          counterpartyAccountId:  fromAccountId,
-          transactionNo:          `${txNo}-IN`,
-          remark:                 memo ?? session.user.name ?? "이체",
-          memo:                   memo ?? null,
-          transactionDate:        txDate,
-          transactedAt:           now,
+          counterpartName:          session.user.name ?? "이체",
+          counterpartyAccountId:    fromAccountId,
+          transactionNo:            `${txNo}-IN`,
+          remark:                   memo ?? session.user.name ?? "이체",
+          memo:                     memo ?? null,
+          transactionDate:          txDate,
+          transactedAt:             now,
         },
       })
     }
@@ -133,7 +214,6 @@ export async function executeTransfer(input: {
 
   const amountStr = amount.toLocaleString("ko-KR")
 
-  // 출금 알림 (송신자)
   await createNotification({
     partyId: session.user.partyId,
     type: "TRANSFER_OUT",
@@ -142,7 +222,6 @@ export async function executeTransfer(input: {
     linkedEntityId: result.transactionId,
   })
 
-  // 잔액 부족 알림 (이체 후 잔액 < 100,000원)
   if (result.balanceAfter < 100_000) {
     await createNotification({
       partyId: session.user.partyId,
@@ -152,7 +231,6 @@ export async function executeTransfer(input: {
     })
   }
 
-  // 입금 알림 (수신자 — 내부 계좌인 경우)
   if (toAccount?.accountStatus === "ACTIVE") {
     const toParty = await prisma.account.findUnique({
       where: { accountId: toAccount.accountId },
@@ -169,5 +247,5 @@ export async function executeTransfer(input: {
     }
   }
 
-  return { ok: true, transactionId: result.transactionId }
+  return { ok: true, transactionId: result.transactionId, status: "COMPLETED" }
 }
