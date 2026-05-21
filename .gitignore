@@ -42,6 +42,6 @@ next-env.d.ts
 
 .claude
 # SQLite
-data/*.db
+# data/*.db
 data/*.db-wal
 data/*.db-shm
