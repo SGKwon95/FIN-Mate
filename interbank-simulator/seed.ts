@@ -14,20 +14,73 @@ const db = new Database(path.join(DATA_DIR, 'other-bank.db'))
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS accounts (
-    account_id     TEXT PRIMARY KEY,
-    account_number TEXT UNIQUE NOT NULL,
-    account_holder TEXT NOT NULL,
-    balance        REAL NOT NULL DEFAULT 0
+    account_id       TEXT PRIMARY KEY,
+    account_number   TEXT UNIQUE NOT NULL,
+    account_holder   TEXT NOT NULL,
+    account_type     TEXT NOT NULL DEFAULT 'DEMAND_DEPOSIT',
+    account_purpose  TEXT NOT NULL DEFAULT 'GENERAL',
+    account_status   TEXT NOT NULL DEFAULT 'ACTIVE',
+    balance          REAL NOT NULL DEFAULT 0,
+    interest_rate    REAL NOT NULL DEFAULT 0,
+    currency_code    TEXT NOT NULL DEFAULT 'KRW',
+    opened_at        TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
   CREATE TABLE IF NOT EXISTS transactions (
-    transaction_id      TEXT PRIMARY KEY,
-    from_bank_code      TEXT NOT NULL,
-    from_account_number TEXT NOT NULL,
-    to_account_number   TEXT NOT NULL,
-    amount              REAL NOT NULL,
-    memo                TEXT,
-    status              TEXT NOT NULL,
-    created_at          TEXT NOT NULL
+    transaction_id             TEXT PRIMARY KEY,
+    account_id                 TEXT,
+    transaction_type           TEXT NOT NULL DEFAULT 'TRANSFER_IN',
+    amount                     REAL NOT NULL,
+    balance_before             REAL,
+    balance_after              REAL,
+    from_bank_code             TEXT,
+    from_account_number        TEXT,
+    to_account_number          TEXT,
+    counterpart_bank_code      TEXT,
+    counterpart_account_number TEXT,
+    counterpart_name           TEXT,
+    remark                     TEXT,
+    memo                       TEXT,
+    instruction_id             TEXT,
+    status                     TEXT NOT NULL DEFAULT 'COMPLETED',
+    transacted_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at                 TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS transfer_instruction (
+    instruction_id        TEXT PRIMARY KEY,
+    instruction_type      TEXT NOT NULL,
+    transfer_scope        TEXT,
+    clearing_network      TEXT,
+    network_seq_no        TEXT,
+    network_response_code TEXT,
+    bank_response_code    TEXT,
+    instruction_status    TEXT NOT NULL DEFAULT 'PENDING',
+    total_count           INTEGER,
+    success_count         INTEGER NOT NULL DEFAULT 0,
+    failed_count          INTEGER NOT NULL DEFAULT 0,
+    total_amount          REAL,
+    submitted_by          TEXT,
+    executed_at           TEXT,
+    remark                TEXT,
+    created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS kftc_receipt (
+    receipt_id       TEXT PRIMARY KEY,
+    instruction_id   TEXT NOT NULL,
+    rsp_code         TEXT NOT NULL,
+    rsp_message      TEXT,
+    bank_rsp_code    TEXT,
+    bank_rsp_message TEXT,
+    fintech_use_num  TEXT,
+    bank_tran_id     TEXT,
+    received_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `)
 
