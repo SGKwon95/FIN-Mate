@@ -63,6 +63,7 @@ async function main() {
           transactionId: true,
           accountId:     true,
           amount:        true,
+          instructionId: true,
           account:       { select: { partyId: true, balance: true } },
         },
       })
@@ -119,6 +120,33 @@ async function main() {
         ])
 
         console.log(`[A 은행] ✔ 실패 처리 + 잔액 복구: ${msg.transactionNo}`)
+      }
+
+      // KftcReceipt 기록 + TransferInstruction 상태 업데이트
+      if (txn.instructionId) {
+        const isCompleted = msg.status === 'COMPLETED'
+        await prisma.$transaction([
+          prisma.kftcReceipt.create({
+            data: {
+              instructionId:  txn.instructionId,
+              rspCode:        isCompleted ? '000' : (msg.failureCode ?? 'ERR'),
+              rspMessage:     isCompleted ? '정상' : '실패',
+              bankRspCode:    msg.failureCode ?? null,
+              bankTranId:     msg.transactionNo,
+              receivedAt:     new Date(msg.settledAt),
+            },
+          }),
+          prisma.transferInstruction.update({
+            where: { instructionId: txn.instructionId },
+            data: {
+              instructionStatus:   isCompleted ? 'COMPLETED' : 'FAILED',
+              networkResponseCode: isCompleted ? '000' : (msg.failureCode ?? null),
+              successCount:        isCompleted ? 1 : 0,
+              failedCount:         isCompleted ? 0 : 1,
+            },
+          }),
+        ])
+        console.log(`[A 은행] ✔ KftcReceipt + TransferInstruction 기록: ${msg.transactionNo}`)
       }
 
       // Step 9: 공동망에 정산 수신 확인 ACK

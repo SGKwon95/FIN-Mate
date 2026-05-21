@@ -17,9 +17,10 @@ const CHANNEL_LABEL: Record<string, string> = {
   WEB:    "인터넷",
 }
 const ACCOUNT_PURPOSE_LABEL: Record<string, string> = {
-  GENERAL: "입출금",
-  SALARY: "급여",
-  SAVINGS: "적금",
+  GENERAL:      "입출금",
+  SALARY:       "급여",
+  SAVINGS:      "적금",
+  TIME_DEPOSIT: "정기예금",
 }
 
 type SearchParams = {

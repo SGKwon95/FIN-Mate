@@ -8,7 +8,7 @@
  *   Step 7  Gateway → [GATEWAY_B_ACK]   → B (결과 수신 확인, 로그)
  */
 import { Kafka, logLevel } from 'kafkajs'
-import { findAccount, creditAccount, recordTransaction } from './db.js'
+import { findAccount, creditAccount, recordTransaction, createInstruction, updateInstruction, createKftcReceipt, findInstructionIdByTransaction } from './db.js'
 import { startHttpServer } from './server.js'
 
 const TOPICS = {
@@ -60,6 +60,7 @@ async function main() {
         const req = body as {
           transactionId:     string
           transactionNo:     string
+          instructionId?:    string
           fromBankCode:      string
           fromAccountNumber: string
           fromPartyName:     string
@@ -78,6 +79,18 @@ async function main() {
         )
 
         const receivedAt = new Date().toISOString()
+
+        // B 은행 실행지시 생성 (INWARD)
+        const instructionId = createInstruction({
+          instructionType:  'INWARD',
+          transferScope:    'INTERBANK',
+          clearingNetwork:  'KFTC',
+          networkSeqNo:     req.instructionId ?? req.transactionNo,
+          instructionStatus: 'PENDING',
+          totalCount:       1,
+          totalAmount:      req.amount,
+          executedAt:       receivedAt,
+        })
 
         // Step 4: 공동망에 수신 확인 ACK
         await producer.send({
@@ -99,6 +112,8 @@ async function main() {
 
         let status:      'COMPLETED' | 'FAILED'
         let failureCode: string | null = null
+        let balanceBefore = 0
+        let balanceAfter  = 0
 
         if (!account) {
           status      = 'FAILED'
@@ -109,20 +124,39 @@ async function main() {
           failureCode = 'SYSTEM_ERROR'
           console.log(`[B 은행] ✗ 시스템 오류 (랜덤): ${req.transactionNo}`)
         } else {
-          creditAccount(req.toAccountNumber, req.amount)
+          const bal = creditAccount(req.toAccountNumber, req.amount)
+          balanceBefore = bal.balanceBefore
+          balanceAfter  = bal.balanceAfter
           status = 'COMPLETED'
           console.log(`[B 은행] ✔ 입금 완료: ${account.account_holder} +${req.amount.toLocaleString('ko-KR')}원`)
         }
 
+        // 실행지시 상태 업데이트
+        updateInstruction(instructionId, {
+          instructionStatus:    status,
+          networkResponseCode:  status === 'COMPLETED' ? '000' : null,
+          bankResponseCode:     failureCode,
+        })
+
+        // 거래내역 기록
         recordTransaction({
-          transactionId:     req.transactionId,
-          fromBankCode:      req.fromBankCode,
-          fromAccountNumber: req.fromAccountNumber,
-          toAccountNumber:   req.toAccountNumber,
-          amount:            req.amount,
-          memo:              req.memo,
+          transactionId:            req.transactionId,
+          accountId:                account?.account_id ?? null,
+          transactionType:          'TRANSFER_IN',
+          amount:                   req.amount,
+          balanceBefore:            status === 'COMPLETED' ? balanceBefore : null,
+          balanceAfter:             status === 'COMPLETED' ? balanceAfter  : null,
+          fromBankCode:             req.fromBankCode,
+          fromAccountNumber:        req.fromAccountNumber,
+          toAccountNumber:          req.toAccountNumber,
+          counterpartBankCode:      req.fromBankCode,
+          counterpartAccountNumber: req.fromAccountNumber,
+          counterpartName:          req.fromPartyName,
+          memo:                     req.memo,
+          instructionId,
           status,
-          createdAt:         now,
+          transactedAt:             now,
+          createdAt:                now,
         })
 
         // Step 6: 공동망에 처리 결과 발신
@@ -141,7 +175,20 @@ async function main() {
 
       // ── Step 7 수신: 공동망이 결과 수신 확인 ─────────────────
       else if (topic === TOPICS.GATEWAY_B_ACK) {
-        console.log(`[B 은행] ✔ 공동망 결과 수신 확인: ${body.transactionNo} (acknowledgedAt: ${body.acknowledgedAt})`)
+        const ack = body as { transactionId: string; transactionNo: string; acknowledgedAt: string }
+        console.log(`[B 은행] ✔ 공동망 결과 수신 확인: ${ack.transactionNo} (acknowledgedAt: ${ack.acknowledgedAt})`)
+
+        // KFTC 수신이력 기록 — 공동망이 B 은행의 처리 결과를 정상 수신했음
+        const instructionIdForAck = findInstructionIdByTransaction(ack.transactionId)
+        if (instructionIdForAck) {
+          createKftcReceipt({
+            instructionId: instructionIdForAck,
+            rspCode:       '000',
+            rspMessage:    '정상',
+            bankTranId:    ack.transactionId,
+            receivedAt:    ack.acknowledgedAt,
+          })
+        }
       }
     },
   })

@@ -27,9 +27,10 @@ type Bank = {
 type Step = "form" | "confirm" | "done"
 
 const ACCOUNT_LABEL: Record<string, string> = {
-  GENERAL: "입출금",
-  SALARY:  "급여",
-  SAVING:  "적금",
+  GENERAL:      "입출금",
+  SALARY:       "급여",
+  SAVINGS:      "적금",
+  TIME_DEPOSIT: "정기예금",
 }
 
 

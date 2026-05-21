@@ -14,6 +14,7 @@ import { kafka, TOPICS } from '@/lib/kafka'
 
 type TransferRequest = {
   transactionId:     string
+  instructionId:     string
   transactionNo:     string
   fromBankCode:      string
   fromAccountNumber: string

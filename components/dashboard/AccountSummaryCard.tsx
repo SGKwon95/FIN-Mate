@@ -17,11 +17,12 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
 };
 
 const PURPOSE_LABEL: Record<string, string> = {
-  GENERAL: "일반",
-  SALARY: "급여",
-  SAVINGS: "저축",
-  BUSINESS: "사업",
-  INVESTMENT: "투자",
+  GENERAL:      "일반",
+  SALARY:       "급여",
+  SAVINGS:      "저축",
+  BUSINESS:     "사업",
+  INVESTMENT:   "투자",
+  TIME_DEPOSIT: "정기예금",
 };
 
 export default function AccountSummaryCard({

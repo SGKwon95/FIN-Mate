@@ -112,6 +112,20 @@ export async function executeTransfer(input: {
         data: { balance: balanceAfter, lastTransactionAt: now },
       })
 
+      const instruction = await tx.transferInstruction.create({
+        data: {
+          instructionType:   "OUTWARD",
+          transferScope:     "INTERBANK",
+          clearingNetwork:   "KFTC",
+          networkSeqNo:      txNo,
+          instructionStatus: "PENDING",
+          totalCount:        1,
+          totalAmount:       amount,
+          submittedBy:       session.user.partyId,
+          executedAt:        now,
+        },
+      })
+
       const outTx = await tx.transaction.create({
         data: {
           accountId:                fromAccountId,
@@ -126,6 +140,7 @@ export async function executeTransfer(input: {
           counterpartName:          toName,
           transactionNo:            txNo,
           transactionKey:           idempotencyKey,
+          instructionId:            instruction.instructionId,
           remark:                   toName,
           memo:                     memo ?? null,
           transactionDate:          txDate,
@@ -133,7 +148,7 @@ export async function executeTransfer(input: {
         },
       })
 
-      return { transactionId: outTx.transactionId, balanceAfter }
+      return { transactionId: outTx.transactionId, instructionId: instruction.instructionId, balanceAfter }
     })
 
     // 공동망으로 이체 요청 발행
@@ -145,6 +160,7 @@ export async function executeTransfer(input: {
           key: result.transactionId,
           value: JSON.stringify({
             transactionId:    result.transactionId,
+            instructionId:    result.instructionId,
             transactionNo:    txNo,
             fromBankCode:     OWN_BANK_CODE,
             fromAccountNumber: fromAccount.accountNumber,
@@ -162,14 +178,6 @@ export async function executeTransfer(input: {
       // Kafka 발행 실패 시 로그만 남기고 계속 (추후 재처리 가능)
       console.error("[Kafka] 이체 요청 발행 실패:", e)
     }
-
-    await createNotification({
-      partyId: session.user.partyId,
-      type: "TRANSFER_OUT",
-      title: "이체 처리 중",
-      body: `${toName}님께 ${amount.toLocaleString("ko-KR")}원 이체 요청이 접수되었습니다.`,
-      linkedEntityId: result.transactionId,
-    })
 
     return { ok: true, transactionId: result.transactionId, status: "PENDING" }
   }

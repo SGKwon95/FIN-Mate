@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http'
-import { findAccount, listTransactions, listAccounts } from './db.js'
+import { findAccount, listTransactions, listAccounts, listInstructions, listKftcReceipts } from './db.js'
 
 const PORT = Number(process.env.INTERBANK_HTTP_PORT ?? 4000)
 
@@ -45,6 +45,21 @@ function route(req: IncomingMessage, res: ServerResponse) {
     return json(res, account)
   }
 
+  // GET /instructions[?limit=N&status=PENDING|COMPLETED|FAILED]
+  if (path === '/instructions') {
+    const limit  = Math.min(Number(q.limit ?? 50), 200)
+    const status = q.status
+    const rows   = listInstructions({ limit, status })
+    return json(res, { count: rows.length, instructions: rows })
+  }
+
+  // GET /kftc-receipts[?limit=N]
+  if (path === '/kftc-receipts') {
+    const limit = Math.min(Number(q.limit ?? 50), 200)
+    const rows  = listKftcReceipts({ limit })
+    return json(res, { count: rows.length, receipts: rows })
+  }
+
   return json(res, { error: 'Not Found' }, 404)
 }
 
@@ -54,5 +69,7 @@ export function startHttpServer() {
     console.log('  GET /transactions?limit=50&status=COMPLETED|FAILED')
     console.log('  GET /accounts')
     console.log('  GET /accounts/:accountNumber')
+    console.log('  GET /instructions?limit=50&status=PENDING|COMPLETED|FAILED')
+    console.log('  GET /kftc-receipts?limit=50')
   })
 }
