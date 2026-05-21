@@ -1,35 +1,53 @@
 /**
- * 공동망 결제 결과 Consumer
- * interbank-transfer-settlements 토픽을 구독하여 이체 상태를 업데이트한다.
+ * A 은행 Settlement Consumer
+ * 흐름:
+ *   Step 2  Gateway → [GATEWAY_ACK]          → A (수신 확인, 로그)
+ *   Step 8  Gateway → [TRANSFER_SETTLEMENTS] → A (최종 정산 결과, DB 업데이트)
+ *   Step 9  A → [A_SETTLED_ACK]              → Gateway (정산 수신 확인)
  * 실행: npx tsx workers/settlement-consumer.ts
  */
 import { kafka, TOPICS } from '@/lib/kafka'
 import { prisma } from '@/lib/prisma'
 
 const consumer = kafka.consumer({ groupId: 'fin-mate-settlement-group' })
+const producer  = kafka.producer()
 
 async function main() {
   const admin = kafka.admin()
   await admin.connect()
   await admin.createTopics({
     waitForLeaders: true,
-    topics: [
-      { topic: TOPICS.TRANSFER_REQUESTS,    numPartitions: 1, replicationFactor: 1 },
-      { topic: TOPICS.TRANSFER_SETTLEMENTS, numPartitions: 1, replicationFactor: 1 },
-    ],
+    topics: Object.values(TOPICS).map((topic) => ({
+      topic,
+      numPartitions:     1,
+      replicationFactor: 1,
+    })),
   })
   await admin.disconnect()
 
+  await producer.connect()
   await consumer.connect()
-  await consumer.subscribe({ topic: TOPICS.TRANSFER_SETTLEMENTS, fromBeginning: false })
+  await consumer.subscribe({
+    topics:        [TOPICS.GATEWAY_ACK, TOPICS.TRANSFER_SETTLEMENTS],
+    fromBeginning: false,
+  })
 
-  console.log('[Settlement Consumer] 공동망 결제 결과 수신 대기 중...')
+  console.log('[A 은행] 공동망 메세지 수신 대기 중...')
+  console.log('  구독:', TOPICS.GATEWAY_ACK, '|', TOPICS.TRANSFER_SETTLEMENTS)
 
   await consumer.run({
-    eachMessage: async ({ message }) => {
+    eachMessage: async ({ topic, message }) => {
       if (!message.value) return
+      const body = JSON.parse(message.value.toString())
 
-      const msg = JSON.parse(message.value.toString()) as {
+      // ── Step 2 수신: Gateway → A 수신 확인 ACK ───────────────
+      if (topic === TOPICS.GATEWAY_ACK) {
+        console.log(`[A 은행] ✔ 공동망 수신 확인: ${body.transactionNo} (receivedAt: ${body.receivedAt})`)
+        return
+      }
+
+      // ── Step 8 수신: Gateway → A 최종 정산 결과 ──────────────
+      const msg = body as {
         transactionId: string
         transactionNo: string
         status:        'COMPLETED' | 'FAILED'
@@ -37,22 +55,20 @@ async function main() {
         settledAt:     string
       }
 
-      console.log(`[Settlement] ${msg.transactionNo} → ${msg.status}`)
+      console.log(`[A 은행] ▶ 정산 결과 수신: ${msg.transactionNo} → ${msg.status}`)
 
-      // 해당 이체 거래 조회
       const txn = await prisma.transaction.findUnique({
         where:  { transactionId: msg.transactionId },
         select: {
           transactionId: true,
           accountId:     true,
           amount:        true,
-          balanceBefore: true,
           account:       { select: { partyId: true, balance: true } },
         },
       })
 
       if (!txn) {
-        console.warn(`[Settlement] 거래 없음: ${msg.transactionId}`)
+        console.warn(`[A 은행] 거래 없음: ${msg.transactionId}`)
         return
       }
 
@@ -75,9 +91,8 @@ async function main() {
           },
         })
 
-        console.log(`[Settlement] 완료 처리: ${msg.transactionNo}`)
+        console.log(`[A 은행] ✔ 완료 처리: ${msg.transactionNo}`)
       } else {
-        // 실패 시 잔액 복구
         const restoredBalance = Number(txn.account.balance) + amountNum
 
         await prisma.$transaction([
@@ -103,13 +118,25 @@ async function main() {
           }),
         ])
 
-        console.log(`[Settlement] 실패 처리 + 잔액 복구: ${msg.transactionNo}`)
+        console.log(`[A 은행] ✔ 실패 처리 + 잔액 복구: ${msg.transactionNo}`)
       }
+
+      // Step 9: 공동망에 정산 수신 확인 ACK
+      await producer.send({
+        topic:    TOPICS.A_SETTLED_ACK,
+        messages: [{ key: msg.transactionId, value: JSON.stringify({
+          transactionId: msg.transactionId,
+          transactionNo: msg.transactionNo,
+          status:        'SETTLED',
+          settledAt:     new Date().toISOString(),
+        }) }],
+      })
+      console.log(`[A 은행] ✔ 정산 수신 ACK 발신: ${msg.transactionNo}`)
     },
   })
 }
 
 main().catch((err) => {
-  console.error('[Settlement Consumer] 오류:', err)
+  console.error('[A 은행 Settlement Consumer] 오류:', err)
   process.exit(1)
 })
