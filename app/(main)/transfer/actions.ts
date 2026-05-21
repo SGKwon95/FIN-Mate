@@ -12,6 +12,34 @@ export type TransferResult =
   | { ok: true; transactionId: string; status: "COMPLETED" | "PENDING" }
   | { ok: false; message: string }
 
+export type VerifyAccountResult =
+  | { ok: true;  holderName: string }
+  | { ok: false; message: string }
+
+export async function verifyAccount(input: {
+  accountNumber: string
+  bankCode: string
+}): Promise<VerifyAccountResult> {
+  const normalized = input.accountNumber.replace(/-/g, "")
+  if (!/^\d{10,16}$/.test(normalized))
+    return { ok: false, message: "계좌번호 형식이 올바르지 않습니다." }
+
+  if (input.bankCode === OWN_BANK_CODE) {
+    const account = await prisma.account.findUnique({
+      where:  { accountNumber: normalized },
+      select: { accountStatus: true, party: { select: { partyName: true } } },
+    })
+    if (!account || account.accountStatus !== "ACTIVE")
+      return { ok: false, message: "존재하지 않는 계좌입니다." }
+    return { ok: true, holderName: account.party.partyName }
+  }
+
+  const { findOtherBankAccount } = await import("@/lib/interbank-db")
+  const acc = findOtherBankAccount(normalized)
+  if (!acc) return { ok: false, message: "존재하지 않는 계좌입니다." }
+  return { ok: true, holderName: acc.account_holder }
+}
+
 export async function executeTransfer(input: {
   fromAccountId: string
   toAccountNumber: string
@@ -71,6 +99,10 @@ export async function executeTransfer(input: {
 
   // ── 타행 이체 (Kafka 공동망) ────────────────────────────────
   if (isExternal) {
+    const { findOtherBankAccount } = await import("@/lib/interbank-db")
+    if (!findOtherBankAccount(toAccountNumber))
+      return { ok: false, message: "수신 계좌가 존재하지 않습니다." }
+
     const result = await prisma.$transaction(async (tx) => {
       const balanceBefore = Number(fromAccount.balance)
       const balanceAfter = balanceBefore - amount

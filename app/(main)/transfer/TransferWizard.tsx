@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, CheckCircle, ChevronRight, AlertCircle, Clock } from "lucide-react"
 import { formatKRW, maskAccountNumber } from "@/lib/formatters"
-import { executeTransfer } from "./actions"
+import { executeTransfer, verifyAccount } from "./actions"
 
 type Account = {
   accountId: string
@@ -60,6 +60,9 @@ export default function TransferWizard({
   const [doneId, setDoneId] = useState("")
   const [doneStatus, setDoneStatus] = useState<"COMPLETED" | "PENDING">("COMPLETED")
   const [idempotencyKey, setIdempotencyKey] = useState("")
+  const [verifiedHolder, setVerifiedHolder] = useState<string | null>(null)
+  const [isVerifying, startVerifyTransition] = useTransition()
+  const [verifyError, setVerifyError] = useState("")
 
   const fromAccount = accounts.find((a) => a.accountId === fromId)
   const amount = Number(amountStr.replace(/,/g, ""))
@@ -69,10 +72,24 @@ export default function TransferWizard({
     if (!fromId) return "출금 계좌를 선택해주세요."
     if (!/^\d{10,16}$/.test(toNumber.replace(/-/g, "")))
       return "받는 계좌번호를 정확히 입력해주세요."
-    if (!toName.trim()) return "받는 분 이름을 입력해주세요."
+    if (!verifiedHolder) return "계좌 조회를 먼저 진행해주세요."
     if (!amount || amount < 1) return "이체 금액을 입력해주세요."
     if (amount > Number(fromAccount?.balance ?? 0)) return "잔액이 부족합니다."
     return ""
+  }
+
+  function handleVerify() {
+    setVerifiedHolder(null)
+    setVerifyError("")
+    startVerifyTransition(async () => {
+      const res = await verifyAccount({ accountNumber: toNumber, bankCode })
+      if (res.ok) {
+        setVerifiedHolder(res.holderName)
+        setToName(res.holderName)
+      } else {
+        setVerifyError(res.message)
+      }
+    })
   }
 
   function goConfirm() {
@@ -247,7 +264,12 @@ export default function TransferWizard({
               {recentRecipients.map((r) => (
                 <button
                   key={r.accountNumber}
-                  onClick={() => { setToNumber(r.accountNumber); setToName(r.name) }}
+                  onClick={() => {
+                    setToNumber(r.accountNumber)
+                    setToName(r.name)
+                    setVerifiedHolder(null)
+                    setVerifyError("")
+                  }}
                   className={`shrink-0 flex flex-col items-center gap-1 px-4 py-2.5 rounded-2xl border text-left transition-colors ${
                     toNumber === r.accountNumber
                       ? "border-kb-navy bg-kb-navy/5"
@@ -267,27 +289,53 @@ export default function TransferWizard({
           <p className="text-xs text-kb-gray font-medium">받는 계좌</p>
           <select
             value={bankCode}
-            onChange={(e) => setBankCode(e.target.value)}
+            onChange={(e) => { setBankCode(e.target.value); setVerifiedHolder(null); setVerifyError("") }}
             className="w-full bg-transparent text-sm text-kb-navy border-b border-kb-gray-border pb-2 outline-none"
           >
             {banks.map((b) => (
               <option key={b.code} value={b.code}>{b.name}</option>
             ))}
           </select>
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="계좌번호 입력 (숫자만)"
-            value={toNumber}
-            onChange={(e) => setToNumber(e.target.value.replace(/[^\d-]/g, ""))}
-            className="w-full text-sm text-kb-navy placeholder:text-kb-gray/40 border-b border-kb-gray-border pb-2 outline-none"
-          />
+          <div className="flex items-center gap-2 border-b border-kb-gray-border pb-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="계좌번호 입력 (숫자만)"
+              value={toNumber}
+              onChange={(e) => {
+                setToNumber(e.target.value.replace(/[^\d-]/g, ""))
+                setVerifiedHolder(null)
+                setVerifyError("")
+              }}
+              className="flex-1 text-sm text-kb-navy placeholder:text-kb-gray/40 outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleVerify}
+              disabled={isVerifying || !/^\d{10,16}$/.test(toNumber.replace(/-/g, ""))}
+              className="shrink-0 px-3 py-1.5 text-xs font-semibold bg-kb-navy text-white rounded-lg disabled:opacity-40"
+            >
+              {isVerifying ? "조회 중…" : "조회"}
+            </button>
+          </div>
+          {verifiedHolder && (
+            <div className="flex items-center gap-1.5 text-green-600 text-sm font-semibold">
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              {verifiedHolder}
+            </div>
+          )}
+          {verifyError && (
+            <p className="text-xs text-red-500">{verifyError}</p>
+          )}
           <input
             type="text"
             placeholder="받는 분 이름"
             value={toName}
+            readOnly={!!verifiedHolder}
             onChange={(e) => setToName(e.target.value)}
-            className="w-full text-sm text-kb-navy placeholder:text-kb-gray/40 border-b border-kb-gray-border pb-2 outline-none"
+            className={`w-full text-sm border-b border-kb-gray-border pb-2 outline-none ${
+              verifiedHolder ? "text-kb-gray cursor-default" : "text-kb-navy placeholder:text-kb-gray/40"
+            }`}
           />
         </div>
 
@@ -347,7 +395,8 @@ export default function TransferWizard({
 
       <button
         onClick={goConfirm}
-        className="mt-6 w-full py-4 bg-kb-navy text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+        disabled={!verifiedHolder}
+        className="mt-6 w-full py-4 bg-kb-navy text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-40"
       >
         다음 <ChevronRight className="w-5 h-5" />
       </button>
