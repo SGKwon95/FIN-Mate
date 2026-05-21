@@ -34,16 +34,16 @@
 
 ### Kafka 토픽 전체 목록
 
-| 토픽 | 방향 | 단계 |
-|------|------|------|
-| `interbank-transfer-requests` | A → 공동망 | Step 1 |
-| `interbank-gateway-ack` | 공동망 → A | Step 2 |
-| `interbank-routed-requests` | 공동망 → B | Step 3 |
-| `interbank-b-received-ack` | B → 공동망 | Step 4 |
-| `interbank-b-results` | B → 공동망 | Step 6 |
-| `interbank-gateway-b-ack` | 공동망 → B | Step 7 |
+| 토픽                             | 방향       | 단계   |
+| -------------------------------- | ---------- | ------ |
+| `interbank-transfer-requests`    | A → 공동망 | Step 1 |
+| `interbank-gateway-ack`          | 공동망 → A | Step 2 |
+| `interbank-routed-requests`      | 공동망 → B | Step 3 |
+| `interbank-b-received-ack`       | B → 공동망 | Step 4 |
+| `interbank-b-results`            | B → 공동망 | Step 6 |
+| `interbank-gateway-b-ack`        | 공동망 → B | Step 7 |
 | `interbank-transfer-settlements` | 공동망 → A | Step 8 |
-| `interbank-a-settled-ack` | A → 공동망 | Step 9 |
+| `interbank-a-settled-ack`        | A → 공동망 | Step 9 |
 
 ---
 
@@ -127,6 +127,7 @@ npm run dev
 ## 로그 예시
 
 **공동망 Gateway:**
+
 ```
 [공동망 Gateway] 수신 대기 중...
 [공동망] ▶ 이체 요청 수신: TX1748001234567 | 004→302 | 100,000원
@@ -137,6 +138,7 @@ npm run dev
 ```
 
 **B 은행 시뮬레이터:**
+
 ```
 [B 은행] 공동망 수신 대기 중...
 [B 은행] ▶ 이체 수신: TX1748001234567 | 004:1234567890 → 3020000000001 | 100,000원
@@ -147,6 +149,7 @@ npm run dev
 ```
 
 **A 은행 Settlement Consumer:**
+
 ```
 [A 은행] 공동망 메세지 수신 대기 중...
 [A 은행] ✔ 공동망 수신 확인: TX1748001234567 (receivedAt: 2026-05-21T...)
@@ -161,11 +164,11 @@ npm run dev
 
 `npm run kafka:simulator` 실행 시 `http://localhost:4000` 에서 수신 이력을 조회할 수 있습니다.
 
-| 엔드포인트 | 설명 |
-|-----------|------|
-| `GET /transactions` | 수신 이력 목록 (쿼리: `limit`, `status`) |
-| `GET /accounts` | 타행 계좌 목록 |
-| `GET /accounts/:accountNumber` | 특정 계좌 조회 |
+| 엔드포인트                     | 설명                                     |
+| ------------------------------ | ---------------------------------------- |
+| `GET /transactions`            | 수신 이력 목록 (쿼리: `limit`, `status`) |
+| `GET /accounts`                | 타행 계좌 목록                           |
+| `GET /accounts/:accountNumber` | 특정 계좌 조회                           |
 
 ```bash
 # 최근 이체 수신 이력
@@ -180,8 +183,8 @@ curl http://localhost:4000/accounts/3020000000001
 
 ### 타행 테스트 계좌
 
-| 계좌번호 | 예금주 | 은행 |
-|---------|-------|------|
+| 계좌번호        | 예금주 | 은행           |
+| --------------- | ------ | -------------- |
 | `3020000000001` | 김신한 | 신한은행 (302) |
 | `3020000000002` | 이신한 | 신한은행 (302) |
 | `0200000000001` | 박우리 | 우리은행 (020) |
@@ -199,13 +202,27 @@ npm run kafka:seed
 
 ## 관련 파일
 
-| 파일 | 역할 |
-|------|------|
-| `lib/kafka.ts` | KafkaJS 싱글톤, 토픽 상수 (8개) |
-| `app/(main)/transfer/actions.ts` | 이체 Server Action, 계좌 실명조회, 타행 분기 및 Kafka 발행 |
-| `lib/interbank-db.ts` | 타행 계좌 실명조회용 SQLite read-only 헬퍼 |
-| `workers/interbank-gateway.ts` | 공동망 Gateway — 라우팅 및 ACK 처리 |
-| `interbank-simulator/src/index.ts` | B 은행 시뮬레이터 — 입금 처리 및 HTTP API |
-| `interbank-simulator/src/db.ts` | SQLite 접근 (계좌/거래 CRUD) |
-| `workers/settlement-consumer.ts` | A 은행 정산 소비자 — DB 업데이트 및 알림 |
-| `data/other-bank.db` | 타행 계좌·거래 데이터 (SQLite) |
+| 파일                               | 역할                                                       |
+| ---------------------------------- | ---------------------------------------------------------- |
+| `lib/kafka.ts`                     | KafkaJS 싱글톤, 토픽 상수 (8개)                            |
+| `app/(main)/transfer/actions.ts`   | 이체 Server Action, 계좌 실명조회, 타행 분기 및 Kafka 발행 |
+| `lib/interbank-db.ts`              | 타행 계좌 실명조회용 SQLite read-only 헬퍼                 |
+| `workers/interbank-gateway.ts`     | 공동망 Gateway — 라우팅 및 ACK 처리                        |
+| `interbank-simulator/src/index.ts` | B 은행 시뮬레이터 — 입금 처리 및 HTTP API                  |
+| `interbank-simulator/src/db.ts`    | SQLite 접근 (계좌/거래 CRUD)                               |
+| `workers/settlement-consumer.ts`   | A 은행 정산 소비자 — DB 업데이트 및 알림                   |
+| `data/other-bank.db`               | 타행 계좌·거래 데이터 (SQLite)                             |
+
+## 시드 삽입
+
+```bash
+  cd /FIN-Mate && npx tsx interbank-simulator/seed.ts
+```
+
+## 실행 방법
+
+```bash
+   npm run kafka:gateway
+   npm run kafka:simulator
+   npm run kafka:settlement
+```

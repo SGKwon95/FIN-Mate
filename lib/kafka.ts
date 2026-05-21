@@ -32,8 +32,17 @@ const globalForKafka = globalThis as unknown as { _kafkaProducer?: Producer }
 export async function getProducer(): Promise<Producer> {
   if (!globalForKafka._kafkaProducer) {
     const p = kafka.producer()
-    await p.connect()
+    try {
+      await p.connect()
+    } catch (e) {
+      // 연결 실패 시 캐시하지 않고 에러를 상위로 전달
+      throw e
+    }
     globalForKafka._kafkaProducer = p
+    // 연결 해제 시 캐시 초기화 → 다음 요청에서 재연결
+    p.on('producer.disconnect', () => {
+      globalForKafka._kafkaProducer = undefined
+    })
   }
   return globalForKafka._kafkaProducer
 }

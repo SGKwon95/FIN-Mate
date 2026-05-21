@@ -175,8 +175,8 @@ export async function executeTransfer(input: {
         }],
       })
     } catch (e) {
-      // Kafka 발행 실패 시 로그만 남기고 계속 (추후 재처리 가능)
-      console.error("[Kafka] 이체 요청 발행 실패:", e)
+      // Kafka 발행 실패 — DB 트랜잭션은 이미 완료되어 PENDING 상태로 남음
+      console.error("[Kafka] 이체 요청 발행 실패 (transactionId=%s):", result.transactionId, e)
     }
 
     return { ok: true, transactionId: result.transactionId, status: "PENDING" }

@@ -7,10 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:seed": "tsx prisma/seed.ts",
+    "db:seed": "tsx --env-file=.env prisma/seed.ts",
     "kafka:gateway": "tsx workers/interbank-gateway.ts",
     "kafka:simulator": "tsx interbank-simulator/src/index.ts",
-    "kafka:settlement": "tsx workers/settlement-consumer.ts",
+    "kafka:settlement": "tsx --env-file=.env workers/settlement-consumer.ts",
     "kafka:seed": "tsx interbank-simulator/seed.ts"
   },
   "prisma": {

@@ -118,7 +118,7 @@ export default async function TransactionsPage({
 
   const grouped: Record<string, TxRow[]> = {}
   for (const tx of transactions) {
-    const day = tx.transactedAt.toISOString().slice(0, 10)
+    const day = tx.transactedAt.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })
     if (!grouped[day]) grouped[day] = []
     grouped[day].push({
       transactionId:   tx.transactionId,
@@ -134,8 +134,8 @@ export default async function TransactionsPage({
     })
   }
 
-  const fromLabel = fromDate.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" })
-  const toLabel   = toDate.toLocaleDateString("ko-KR",   { year: "numeric", month: "2-digit", day: "2-digit" })
+  const fromLabel = fromDate.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" })
+  const toLabel   = toDate.toLocaleDateString("ko-KR",   { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" })
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 pb-24 lg:pb-6">
@@ -202,7 +202,7 @@ export default async function TransactionsPage({
                   <div className="px-4 py-2 bg-kb-gray-light border-b border-kb-gray-border">
                     <p className="text-xs font-medium text-kb-gray">
                       {new Date(day).toLocaleDateString("ko-KR", {
-                        year: "numeric", month: "long", day: "numeric", weekday: "short",
+                        year: "numeric", month: "long", day: "numeric", weekday: "short", timeZone: "Asia/Seoul",
                       })}
                     </p>
                   </div>
@@ -210,7 +210,7 @@ export default async function TransactionsPage({
                     {rows.map(tx => {
                       const label = tx.counterpartName || tx.remark || TX_TYPE_LABEL[tx.transactionType] || tx.transactionType
                       const time = new Date(tx.transactedAt).toLocaleTimeString("ko-KR", {
-                        hour: "2-digit", minute: "2-digit", hour12: false,
+                        hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul",
                       })
                       return (
                         <li key={tx.transactionId} className="px-4 py-3.5 flex items-center gap-3">
@@ -255,8 +255,8 @@ export default async function TransactionsPage({
                 <tbody className="divide-y divide-kb-gray-border">
                   {transactions.map(tx => {
                     const dt = new Date(tx.transactedAt)
-                    const dateStr = dt.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" })
-                    const timeStr = dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+                    const dateStr = dt.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" })
+                    const timeStr = dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Seoul" })
                     const isCredit = CREDIT_TYPES.has(tx.transactionType)
                     return (
                       <tr key={tx.transactionId} className="hover:bg-kb-gray-light transition-colors">
