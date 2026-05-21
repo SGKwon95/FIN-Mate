@@ -11,6 +11,8 @@
     "kafka:gateway": "tsx workers/interbank-gateway.ts",
     "kafka:simulator": "tsx interbank-simulator/src/index.ts",
     "kafka:settlement": "tsx --env-file=.env workers/settlement-consumer.ts",
+    "kafka:inbound": "tsx --env-file=.env workers/inbound-consumer.ts",
+    "kafka:all": "concurrently -n gateway,simulator,settlement,inbound -c blue,yellow,green,cyan \"npm run kafka:gateway\" \"npm run kafka:simulator\" \"npm run kafka:settlement\" \"npm run kafka:inbound\""
     "kafka:seed": "tsx interbank-simulator/seed.ts"
   },
   "prisma": {
@@ -41,6 +43,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",

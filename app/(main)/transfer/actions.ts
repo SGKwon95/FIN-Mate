@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { createNotification } from "@/lib/notifications"
 import { getProducer, TOPICS } from "@/lib/kafka"
+import { toKSTDateCode } from "@/lib/formatters"
 
 const OWN_BANK_CODE = "004"
 
@@ -94,7 +95,7 @@ export async function executeTransfer(input: {
   const isExternal = bankCode !== OWN_BANK_CODE
 
   const now = new Date()
-  const txDate = now.toISOString().slice(0, 10).replace(/-/g, "")
+  const txDate = toKSTDateCode(now)
   const txNo = `TX${Date.now()}`
 
   // ── 타행 이체 (Kafka 공동망) ────────────────────────────────

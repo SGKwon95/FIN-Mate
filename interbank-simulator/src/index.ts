@@ -47,7 +47,7 @@ async function main() {
     fromBeginning: false,
   })
 
-  startHttpServer()
+  startHttpServer(producer)
   console.log('[B 은행] 공동망 수신 대기 중...')
 
   await consumer.run({

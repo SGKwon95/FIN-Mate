@@ -17,6 +17,10 @@ export const TOPICS = {
   TRANSFER_SETTLEMENTS: 'interbank-transfer-settlements',
   // Step 9 : A bank → Gateway  (settled ACK)
   A_SETTLED_ACK:        'interbank-a-settled-ack',
+  // Inbound : Gateway → FIN-Mate (타행 → FIN-Mate 입금 요청)
+  INBOUND_REQUESTS:     'interbank-inbound-requests',
+  // Inbound : FIN-Mate → Gateway (입금 처리 결과)
+  INBOUND_RESULTS:      'interbank-inbound-results',
 } as const
 
 const kafka = new Kafka({

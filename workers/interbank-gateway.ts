@@ -53,12 +53,12 @@ async function main() {
   await producer.connect()
   await consumer.connect()
   await consumer.subscribe({
-    topics:        [TOPICS.TRANSFER_REQUESTS, TOPICS.B_RECEIVED_ACK, TOPICS.B_RESULTS],
+    topics:        [TOPICS.TRANSFER_REQUESTS, TOPICS.B_RECEIVED_ACK, TOPICS.B_RESULTS, TOPICS.INBOUND_RESULTS],
     fromBeginning: false,
   })
 
   console.log('[공동망 Gateway] 수신 대기 중...')
-  console.log('  구독:', TOPICS.TRANSFER_REQUESTS, '|', TOPICS.B_RECEIVED_ACK, '|', TOPICS.B_RESULTS)
+  console.log('  구독:', TOPICS.TRANSFER_REQUESTS, '|', TOPICS.B_RECEIVED_ACK, '|', TOPICS.B_RESULTS, '|', TOPICS.INBOUND_RESULTS)
 
   await consumer.run({
     eachMessage: async ({ topic, message }) => {
@@ -82,18 +82,38 @@ async function main() {
           }) }],
         })
 
-        // Step 3: B 은행으로 라우팅
-        await producer.send({
-          topic:    TOPICS.ROUTED_REQUESTS,
-          messages: [{ key: req.transactionId, value: message.value }],
-        })
-
-        console.log(`[공동망] ✔ A 수신 ACK 발신 + B 은행 라우팅 완료: ${req.transactionNo}`)
+        // Step 3: 수신 은행으로 라우팅 (FIN-Mate 자행 수신 vs 타행 시뮬레이터)
+        if (req.toBankCode === '004') {
+          await producer.send({
+            topic:    TOPICS.INBOUND_REQUESTS,
+            messages: [{ key: req.transactionId, value: message.value }],
+          })
+          console.log(`[공동망] ✔ A 수신 ACK 발신 + FIN-Mate 인바운드 라우팅 완료: ${req.transactionNo}`)
+        } else {
+          await producer.send({
+            topic:    TOPICS.ROUTED_REQUESTS,
+            messages: [{ key: req.transactionId, value: message.value }],
+          })
+          console.log(`[공동망] ✔ A 수신 ACK 발신 + B 은행 라우팅 완료: ${req.transactionNo}`)
+        }
       }
 
       // ── Step 4 수신: B → Gateway (수신 확인) ─────────────────
       else if (topic === TOPICS.B_RECEIVED_ACK) {
         console.log(`[공동망] ✔ B 은행 수신 확인: ${body.transactionNo} (receivedAt: ${body.receivedAt})`)
+      }
+
+      // ── FIN-Mate 인바운드 결과 수신: FIN-Mate → Gateway ─────
+      else if (topic === TOPICS.INBOUND_RESULTS) {
+        const res = body as BResult
+        console.log(`[공동망] ▶ FIN-Mate 인바운드 처리 결과: ${res.transactionNo} → ${res.status}`)
+
+        // 원래 송신 은행(시뮬레이터)에 최종 정산 결과 전달
+        await producer.send({
+          topic:    TOPICS.TRANSFER_SETTLEMENTS,
+          messages: [{ key: res.transactionId, value: message.value }],
+        })
+        console.log(`[공동망] ✔ 인바운드 정산 결과 전달 완료: ${res.transactionNo}`)
       }
 
       // ── Step 6 수신: B → Gateway (처리 결과) ─────────────────

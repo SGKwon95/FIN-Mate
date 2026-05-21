@@ -4,6 +4,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { createNotification } from "@/lib/notifications"
+import { toKSTDateStr } from "@/lib/formatters"
 
 export type SubscribeResult =
   | { ok: true; contractId: string; accountNumber: string }
@@ -81,12 +82,12 @@ export async function subscribeTimeDeposit(input: {
   }
 
   const now = new Date()
-  const today = now.toISOString().slice(0, 10)
+  const today = toKSTDateStr(now)
 
   // 만기일 계산
   const maturity = new Date(now)
   maturity.setMonth(maturity.getMonth() + periodMonths)
-  const maturityDate = maturity.toISOString().slice(0, 10)
+  const maturityDate = toKSTDateStr(maturity)
 
   // 신규 계좌번호 생성
   const newAccountNumber = `00931${Date.now().toString().slice(-7)}`
