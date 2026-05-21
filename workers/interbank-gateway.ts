@@ -106,14 +106,8 @@ async function main() {
       // ── FIN-Mate 인바운드 결과 수신: FIN-Mate → Gateway ─────
       else if (topic === TOPICS.INBOUND_RESULTS) {
         const res = body as BResult
-        console.log(`[공동망] ▶ FIN-Mate 인바운드 처리 결과: ${res.transactionNo} → ${res.status}`)
-
-        // 원래 송신 은행(시뮬레이터)에 최종 정산 결과 전달
-        await producer.send({
-          topic:    TOPICS.TRANSFER_SETTLEMENTS,
-          messages: [{ key: res.transactionId, value: message.value }],
-        })
-        console.log(`[공동망] ✔ 인바운드 정산 결과 전달 완료: ${res.transactionNo}`)
+        // FIN-Mate가 수신 은행(B)이므로 TRANSFER_SETTLEMENTS(A용)로 보내지 않음
+        console.log(`[공동망] ✔ FIN-Mate 인바운드 처리 완료: ${res.transactionNo} → ${res.status}`)
       }
 
       // ── Step 6 수신: B → Gateway (처리 결과) ─────────────────

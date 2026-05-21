@@ -65,11 +65,22 @@ async function main() {
       let status:      'COMPLETED' | 'FAILED'
       let failureCode: string | null = null
 
-      // 수신 계좌 조회
-      const account = await prisma.account.findUnique({
-        where:  { accountNumber: req.toAccountNumber },
-        select: { accountId: true, partyId: true, balance: true, accountStatus: true, isLocked: true },
-      })
+      // 수신 계좌 조회 — DB에 하이픈 포함/미포함 혼재 가능하므로 REPLACE로 정규화 비교
+      const rows = await prisma.$queryRaw<Array<{
+        account_id: string; party_id: string; balance: string; account_status: string; is_locked: boolean
+      }>>`
+        SELECT account_id, party_id, balance, account_status, is_locked
+        FROM accounts
+        WHERE REPLACE(account_number, '-', '') = ${req.toAccountNumber}
+        LIMIT 1
+      `
+      const account = rows[0] ? {
+        accountId:     rows[0].account_id,
+        partyId:       rows[0].party_id,
+        balance:       rows[0].balance,
+        accountStatus: rows[0].account_status,
+        isLocked:      rows[0].is_locked,
+      } : null
 
       if (!account || account.accountStatus !== 'ACTIVE' || account.isLocked) {
         status      = 'FAILED'
