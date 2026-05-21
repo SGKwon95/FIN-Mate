@@ -918,9 +918,9 @@ model LoanDelinquency {
 model Notification {
   notificationId String   @id @default(dbgenerated("gen_random_uuid()")) @map("notification_id") @db.Uuid
   partyId        String   @map("party_id") @db.Uuid
-  type           String   @db.VarChar(50)
-  title          String   @db.VarChar(200)
-  body           String   @db.VarChar(500)
+  notificationType  String   @map("notification_type") @db.VarChar(50)
+  notificationTitle String   @map("notification_title") @db.VarChar(200)
+  notificationBody  String   @map("notification_body") @db.VarChar(500)
   isRead         Boolean  @default(false) @map("is_read")
   linkedEntityId String?  @map("linked_entity_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()

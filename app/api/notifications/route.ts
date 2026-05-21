@@ -14,9 +14,9 @@ export async function GET() {
     take: 20,
     select: {
       notificationId: true,
-      type: true,
-      title: true,
-      body: true,
+      notificationType: true,
+      notificationTitle: true,
+      notificationBody: true,
       isRead: true,
       linkedEntityId: true,
       createdAt: true,

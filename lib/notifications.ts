@@ -19,11 +19,11 @@ export async function createNotification(params: {
 }) {
   return prisma.notification.create({
     data: {
-      partyId: params.partyId,
-      type: params.type,
-      title: params.title,
-      body: params.body,
-      linkedEntityId: params.linkedEntityId ?? null,
+      partyId:          params.partyId,
+      notificationType: params.type,
+      notificationTitle: params.title,
+      notificationBody:  params.body,
+      linkedEntityId:   params.linkedEntityId ?? null,
     },
   })
 }

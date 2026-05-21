@@ -1097,13 +1097,13 @@ CREATE TABLE notification (
     notification_id     UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     party_id            UUID          NOT NULL REFERENCES party(party_id),
 
-    type                VARCHAR(50)   NOT NULL
-                            CHECK (type IN (
+    notification_type                VARCHAR(50)   NOT NULL
+                            CHECK (notification_type IN (
                                 'TRANSFER_OUT', 'TRANSFER_IN', 'LOW_BALANCE', 'ACCOUNT_LOCKED',
                                 'SAVINGS_DUE', 'SAVINGS_PAID', 'SAVINGS_MATURITY', 'RISK_ALERT'
                             )),
-    title               VARCHAR(200)  NOT NULL,
-    body                VARCHAR(500)  NOT NULL,
+    notification_title               VARCHAR(200)  NOT NULL,
+    notification_body                VARCHAR(500)  NOT NULL,
     is_read             BOOLEAN       NOT NULL DEFAULT FALSE,
     linked_entity_id    UUID,
 
