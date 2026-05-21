@@ -49,6 +49,7 @@ model CommonCode {
 // ============================================================
 model Party {
   partyId              String    @id @default(dbgenerated("gen_random_uuid()")) @map("party_id") @db.Uuid
+  partyNo              String?   @unique @map("party_no") @db.VarChar(30)  // 화면 표시용 고객번호 (예: IND-2026-0001)
   partyName            String    @map("party_name") @db.VarChar(100)
   partyRole            String    @map("party_role") @db.VarChar(20)  // INDIVIDUAL | CORPORATE
   partyStatus          String    @default("ACTIVE") @map("party_status") @db.VarChar(20)
@@ -59,15 +60,19 @@ model Party {
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  individual           Individual?
-  corporate            Corporate?
-  partyAuth            PartyAuth?
-  employee             Employee?
-  accounts             Account[]
-  contracts            Contract[]
-  loanApplications     LoanApplication[]
-  counterpartyTxns     Transaction[] @relation("CounterpartyPartyTxns")
-  notifications        Notification[]
+  individual                 Individual?
+  corporate                  Corporate?
+  partyAuth                  PartyAuth?
+  employee                   Employee?
+  accounts                   Account[]
+  contracts                  Contract[]
+  loanApplications           LoanApplication[]
+  counterpartyTxns           Transaction[]            @relation("CounterpartyPartyTxns")
+  notifications              Notification[]
+  submittedInstructions      TransferInstruction[]    @relation("InstructionSubmittedBy")
+  approvedInstructions       TransferInstruction[]    @relation("InstructionApprovedBy")
+  uploadedDocuments          Document[]               @relation("DocumentUploadedBy")
+  submittedDocuments         Document[]               @relation("DocumentSubmittedBy")
 
   @@map("party")
 }
@@ -76,31 +81,42 @@ model Party {
 // 2-1. 개인 고객 상세
 // ============================================================
 model Individual {
-  individualId                String   @id @default(dbgenerated("gen_random_uuid()")) @map("individual_id") @db.Uuid
-  partyId                     String   @unique @map("party_id") @db.Uuid
-  individualPhone             String?  @map("individual_phone") @db.VarChar(20)
-  individualEmail             String?  @map("individual_email") @db.VarChar(200)
-  individualCi                String   @map("indivisual_ci") @db.VarChar(50)  // 원본 오타 유지
-  transferLimitPerTransaction Decimal? @map("transfer_limit_per_transaction") @db.Decimal(15, 2)
-  transferLimitPerDay         Decimal? @map("transfer_limit_per_day") @db.Decimal(15, 2)
-  zipCode                     String?  @map("zip_code") @db.VarChar(5)
-  address                     String?  @db.VarChar(200)
-  addressDetail               String?  @map("address_detail") @db.VarChar(100)
-  employmentType              String?  @map("employment_type") @db.VarChar(20)
-  employerName                String?  @map("employer_name") @db.VarChar(100)
-  jobTitle                    String?  @map("job_title") @db.VarChar(50)
-  industryCode                String?  @map("industry_code") @db.VarChar(10)
-  employmentStartDate         String?  @map("employment_start_date") @db.VarChar(10)
-  annualIncome                Decimal? @map("annual_income") @db.Decimal(15, 2)
-  individualStatus            String   @default("ACTIVE") @map("individual_status") @db.VarChar(20)
-  createdBy                   String?  @map("created_by") @db.Uuid
-  updatedBy                   String?  @map("updated_by") @db.Uuid
-  createdAt                   DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt                   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  individualId                String    @id @default(dbgenerated("gen_random_uuid()")) @map("individual_id") @db.Uuid
+  partyId                     String    @unique @map("party_id") @db.Uuid
+  individualPhone             String?   @map("individual_phone") @db.VarChar(20)
+  individualEmail             String?   @map("individual_email") @db.VarChar(200)
+  individualCi                String    @map("indivisual_ci") @db.VarChar(50)  // 원본 오타 유지
+  transferLimitPerTransaction Decimal?  @map("transfer_limit_per_transaction") @db.Decimal(15, 2)
+  transferLimitPerDay         Decimal?  @map("transfer_limit_per_day") @db.Decimal(15, 2)
+  zipCode                     String?   @map("zip_code") @db.VarChar(5)
+  address                     String?   @db.VarChar(200)
+  addressDetail               String?   @map("address_detail") @db.VarChar(100)
+  employmentType              String?   @map("employment_type") @db.VarChar(20)
+  employerName                String?   @map("employer_name") @db.VarChar(100)
+  jobTitle                    String?   @map("job_title") @db.VarChar(50)
+  industryCode                String?   @map("industry_code") @db.VarChar(10)
+  employmentStartDate         String?   @map("employment_start_date") @db.VarChar(10)
+  annualIncome                Decimal?  @map("annual_income") @db.Decimal(15, 2)
+  individualStatus            String    @default("ACTIVE") @map("individual_status") @db.VarChar(20)
+  // 기업뱅킹 소속 (법인 소속 시만 사용)
+  corpId                      String?   @map("corp_id") @db.Uuid
+  corpDepartment              String?   @map("corp_department") @db.VarChar(100)
+  corpPosition                String?   @map("corp_position") @db.VarChar(100)
+  corpRole                    String?   @map("corp_role") @db.VarChar(30)
+  corpStatus                  String?   @map("corp_status") @db.VarChar(20)
+  corpFailedAttemptCount      Int?      @map("corp_failed_attempt_count")
+  corpLockedAt                DateTime? @map("corp_locked_at") @db.Timestamptz()
+  corpLastLoginAt             DateTime? @map("corp_last_login_at") @db.Timestamptz()
+  createdBy                   String?   @map("created_by") @db.Uuid
+  updatedBy                   String?   @map("updated_by") @db.Uuid
+  createdAt                   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  party Party @relation(fields: [partyId], references: [partyId])
+  party     Party      @relation(fields: [partyId], references: [partyId])
+  corporate Corporate? @relation(fields: [corpId], references: [corporateId])
 
   @@index([individualCi], map: "idx_individual_ci")
+  @@index([corpId], map: "idx_individual_corp")
   @@map("individual")
 }
 
@@ -114,9 +130,13 @@ model Corporate {
   corporationRegNo          String?   @map("corporation_reg_no") @db.VarChar(20)
   companyType               String?   @map("company_type") @db.VarChar(20)
   industryCode              String?   @map("industry_code") @db.VarChar(10)
+  businessTypeCode          String?   @map("business_type_code") @db.VarChar(10)
   establishedDate           String?   @map("established_date") @db.VarChar(10)
   fiscalYearEndMonth        Int?      @map("fiscal_year_end_month") @db.SmallInt
   representativeName        String?   @map("representative_name") @db.VarChar(100)
+  representativePhone       String?   @map("representative_phone") @db.VarChar(20)
+  representativeEmail       String?   @map("representative_email") @db.VarChar(100)
+  representativeNationality String?   @map("representative_nationality") @db.VarChar(3)
   capitalAmount             Decimal?  @map("capital_amount") @db.Decimal(15, 2)
   bizZipCode                String?   @map("biz_zip_code") @db.VarChar(5)
   bizAddress                String?   @map("biz_address") @db.VarChar(200)
@@ -134,8 +154,8 @@ model Corporate {
   createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt                 DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  party          Party           @relation(fields: [partyId], references: [partyId])
-  corporateUsers CorporateUser[]
+  party       Party        @relation(fields: [partyId], references: [partyId])
+  individuals Individual[]
 
   @@map("corporate")
 }
@@ -167,7 +187,7 @@ model PartyAuth {
 }
 
 // ============================================================
-// 23. 지점 (Branch — contract/employee보다 먼저 선언)
+// 23. 지점
 // ============================================================
 model Branch {
   branchId            String    @id @default(dbgenerated("gen_random_uuid()")) @map("branch_id") @db.Uuid
@@ -199,12 +219,12 @@ model Branch {
 }
 
 // ============================================================
-// 24. 은행 직원 (Employee — product_terms/contract보다 먼저 선언)
+// 24. 은행 직원
 // ============================================================
 model Employee {
   employeeId     String    @id @default(dbgenerated("gen_random_uuid()")) @map("employee_id") @db.Uuid
   branchId       String    @map("branch_id") @db.Uuid
-  partyId        String?   @unique @map("party_id") @db.Uuid  // 1인 1직원
+  partyId        String?   @unique @map("party_id") @db.Uuid
   employeeNo     String    @unique @map("employee_no") @db.VarChar(20)
   employeeName   String    @map("employee_name") @db.VarChar(100)
   department     String?   @db.VarChar(100)
@@ -219,14 +239,15 @@ model Employee {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  branch            Branch            @relation(fields: [branchId], references: [branchId])
-  party             Party?            @relation(fields: [partyId], references: [partyId])
+  branch            Branch             @relation(fields: [branchId], references: [branchId])
+  party             Party?             @relation(fields: [partyId], references: [partyId])
   productTerms      ProductTerms[]
   contracts         Contract[]
-  loanApplications  LoanApplication[]
-  loanApprovalSteps LoanApprovalStep[]
-  loanDocuments     LoanDocument[]
-  approvedTxns      Transaction[]
+  loanApplications   LoanApplication[]
+  approvedApplications LoanApplication[] @relation("ApprovalAuthority")
+  loanApprovalSteps  LoanApprovalStep[]
+  approvedTxns       Transaction[]
+  verifiedDocuments  Document[]
 
   @@index([branchId], map: "idx_employee_branch")
   @@index([employeeNo], map: "idx_employee_no")
@@ -250,7 +271,7 @@ model Product {
   salesTarget           String   @default("ALL") @map("sales_target") @db.VarChar(20)
   isDepositInsured      Boolean  @default(false) @map("is_deposit_insured")
   depositInsuranceLimit Decimal? @map("deposit_insurance_limit") @db.Decimal(15, 2)
-  description           String?  @db.Text
+  description           String?  @db.Text  // CSV 임포트용 추가 필드
   createdBy             String   @map("created_by") @db.Uuid
   updatedBy             String   @map("updated_by") @db.Uuid
   createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
@@ -401,6 +422,8 @@ model DepositDetail {
   minPeriodMonths            Int?     @map("min_period_months")
   maxPeriodMonths            Int?     @map("max_period_months")
   earlyWithdrawalPenaltyRate Decimal? @map("early_withdrawal_penalty_rate") @db.Decimal(7, 4)
+  prepaymentAllowed          Boolean  @default(false) @map("prepayment_allowed")  // 선납 가능 여부 (SAVINGS 전용)
+  deferralAllowed            Boolean  @default(false) @map("deferral_allowed")    // 이연 가능 여부 (SAVINGS 전용)
   createdBy                  String?  @map("created_by") @db.Uuid
   updatedBy                  String?  @map("updated_by") @db.Uuid
   createdAt                  DateTime @default(now()) @map("created_at") @db.Timestamptz()
@@ -466,16 +489,16 @@ model Contract {
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  party            Party                    @relation(fields: [partyId], references: [partyId])
-  product          Product                  @relation(fields: [productId], references: [productId])
-  branch           Branch?                  @relation(fields: [branchId], references: [branchId])
-  employee         Employee?                @relation(fields: [employeeId], references: [employeeId])
-  accounts         Account[]
-  internalAccounts InternalAccount[]
-  termsAgreements  ContractTermsAgreement[]
-  rateBenefits     ContractRateBenefit[]
+  party           Party                    @relation(fields: [partyId], references: [partyId])
+  product         Product                  @relation(fields: [productId], references: [productId])
+  branch          Branch?                  @relation(fields: [branchId], references: [branchId])
+  employee        Employee?                @relation(fields: [employeeId], references: [employeeId])
+  accounts        Account[]
+  termsAgreements ContractTermsAgreement[]
+  rateBenefits    ContractRateBenefit[]
   loanApplications LoanApplication[]
-  delinquencies    LoanDelinquency[]
+  delinquencies   LoanDelinquency[]
+  savingsPayments SavingsPayment[]
 
   @@index([partyId], map: "idx_contract_party")
   @@index([productId], map: "idx_contract_product")
@@ -491,7 +514,9 @@ model ContractTermsAgreement {
   contractId      String   @map("contract_id") @db.Uuid
   termsId         String   @map("terms_id") @db.Uuid
   agreedAt        DateTime @default(now()) @map("agreed_at") @db.Timestamptz()
-  agreementMethod String   @map("agreement_method") @db.VarChar(20)
+  agreementMethod String   @map("agreement_method") @db.VarChar(20)  // APP | PAPER | KIOSK
+  contractMethod  String?  @map("contract_method") @db.VarChar(20)   // REMOTE | IN_PERSON | HYBRID
+  ipAddress       String?  @map("ip_address")                         // INET 타입: DB 레벨 유지
   createdBy       String?  @map("created_by") @db.Uuid
   updatedBy       String?  @map("updated_by") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
@@ -536,6 +561,7 @@ model Account {
   contractId                 String?   @map("contract_id") @db.Uuid
   accountType                String    @map("account_type") @db.VarChar(20)
   accountStatus              String    @default("ACTIVE") @map("account_status") @db.VarChar(20)
+  creditLimit                Decimal?  @map("credit_limit") @db.Decimal(15, 2)  // 마이너스통장 한도
   balance                    Decimal   @default(0) @db.Decimal(15, 2)
   currencyCode               String    @default("KRW") @map("currency_code") @db.Char(3)
   openedDate                 String    @map("opened_date") @db.VarChar(10)
@@ -558,11 +584,9 @@ model Account {
   party    Party     @relation(fields: [partyId], references: [partyId])
   contract Contract? @relation(fields: [contractId], references: [contractId])
 
-  // Transaction에서 account_id, counterparty_account_id 두 FK가 모두 Account를 참조하므로 명시적 relation name 필요
-  transactions             Transaction[] @relation("AccountTxns")
-  counterpartyTxns         Transaction[] @relation("CounterpartyAccountTxns")
-  savingsPayments          SavingsPayment[]
-  accountMappings          AccountMapping[]
+  transactions     Transaction[] @relation("AccountTxns")
+  counterpartyTxns Transaction[] @relation("CounterpartyAccountTxns")
+  savingsPayments  SavingsPayment[]
 
   @@index([partyId], map: "idx_account_party_id")
   @@index([contractId], map: "idx_account_contract_id")
@@ -571,71 +595,135 @@ model Account {
 }
 
 // ============================================================
-// 14. 거래 내역
+// 14. 실행지시
+// ============================================================
+model TransferInstruction {
+  instructionId        String    @id @default(dbgenerated("gen_random_uuid()")) @map("instruction_id") @db.Uuid
+  instructionType      String    @map("instruction_type") @db.VarChar(30)
+  transferScope        String?   @map("transfer_scope") @db.VarChar(10)
+  clearingNetwork      String?   @map("clearing_network") @db.VarChar(20)
+  networkSeqNo         String?   @map("network_seq_no") @db.VarChar(50)
+  networkResponseCode  String?   @map("network_response_code") @db.VarChar(10)
+  bankResponseCode     String?   @map("bank_response_code") @db.VarChar(10)
+  instructionStatus    String    @default("PENDING") @map("instruction_status") @db.VarChar(20)
+  totalCount           Int?      @map("total_count")
+  successCount         Int       @default(0) @map("success_count")
+  failedCount          Int       @default(0) @map("failed_count")
+  totalAmount          Decimal?  @map("total_amount") @db.Decimal(15, 2)
+  submittedBy          String?   @map("submitted_by") @db.Uuid
+  approvedBy           String?   @map("approved_by") @db.Uuid
+  approvedAt           DateTime? @map("approved_at") @db.Timestamptz()
+  scheduledAt          DateTime? @map("scheduled_at") @db.Timestamptz()
+  executedAt           DateTime? @map("executed_at") @db.Timestamptz()
+  remark               String?   @db.VarChar(200)
+  createdBy            String?   @map("created_by") @db.Uuid
+  updatedBy            String?   @map("updated_by") @db.Uuid
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  submitter    Party?        @relation("InstructionSubmittedBy", fields: [submittedBy], references: [partyId])
+  approver     Party?        @relation("InstructionApprovedBy", fields: [approvedBy], references: [partyId])
+  transactions Transaction[]
+  kftcReceipts KftcReceipt[]
+
+  @@index([instructionType], map: "idx_transfer_instruction_type")
+  @@index([instructionStatus], map: "idx_transfer_instruction_status")
+  @@index([clearingNetwork], map: "idx_transfer_instruction_network")
+  @@map("transfer_instruction")
+}
+
+// ============================================================
+// 14-1. KFTC 수신이력
+// ============================================================
+model KftcReceipt {
+  receiptId        String   @id @default(dbgenerated("gen_random_uuid()")) @map("receipt_id") @db.Uuid
+  instructionId    String   @map("instruction_id") @db.Uuid
+  rspCode          String   @map("rsp_code") @db.VarChar(10)
+  rspMessage       String?  @map("rsp_message") @db.VarChar(200)
+  bankRspCode      String?  @map("bank_rsp_code") @db.VarChar(10)
+  bankRspMessage   String?  @map("bank_rsp_message") @db.VarChar(200)
+  fintechUseNum    String?  @map("fintech_use_num") @db.VarChar(30)
+  bankTranId       String?  @map("bank_tran_id") @db.VarChar(30)
+  receivedAt       DateTime @default(now()) @map("received_at") @db.Timestamptz()
+  createdBy        String?  @map("created_by") @db.Uuid
+  updatedBy        String?  @map("updated_by") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  instruction TransferInstruction @relation(fields: [instructionId], references: [instructionId])
+
+  @@index([instructionId], map: "idx_kftc_receipt_instruction")
+  @@index([bankTranId], map: "idx_kftc_receipt_bank_tran")
+  @@map("kftc_receipt")
+}
+
+// ============================================================
+// 15. 거래 내역
 // ============================================================
 model Transaction {
-  transactionId           String    @id @default(dbgenerated("gen_random_uuid()")) @map("transaction_id") @db.Uuid
-  accountId               String    @map("account_id") @db.Uuid
-  transactionType         String    @map("transaction_type") @db.VarChar(20)
-  amount                  Decimal   @db.Decimal(15, 2)
-  balanceBefore           Decimal   @map("balance_before") @db.Decimal(15, 2)
-  balanceAfter            Decimal   @map("balance_after") @db.Decimal(15, 2)
-  transactionStatus       String    @default("COMPLETED") @map("transaction_status") @db.VarChar(20)
-  channel                 String?   @db.VarChar(20)
-  counterpartAccountNumber String?  @map("counterpart_account_number") @db.VarChar(30)
-  counterpartBankCode     String?   @map("counterpart_bank_code") @db.VarChar(10)
-  counterpartName         String?   @map("counterpart_name") @db.VarChar(100)
-  counterpartyPartyId     String?   @map("counterparty_party_id") @db.Uuid
-  counterpartyAccountId   String?   @map("counterparty_account_id") @db.Uuid
-  bankCode                String?   @map("bank_code") @db.VarChar(10)
-  transferer              String?   @db.VarChar(20)
-  remitter                String?   @db.VarChar(20)
-  transactionNo           String?   @unique @map("transaction_no") @db.VarChar(30)
-  transactionKey          String?   @unique @map("transaction_key") @db.VarChar(50)
-  referenceNo             String?   @map("reference_no") @db.VarChar(50)
-  batchId                 String?   @map("batch_id") @db.Uuid
-  feeAmount               Decimal?  @map("fee_amount") @db.Decimal(15, 2)
-  taxAmount               Decimal?  @map("tax_amount") @db.Decimal(15, 2)
-  transferMethod          String?   @map("transfer_method") @db.VarChar(20)
-  settlementDate          String?   @map("settlement_date") @db.VarChar(10)
-  approvedBy              String?   @map("approved_by") @db.Uuid
-  approvedAt              DateTime? @map("approved_at") @db.Timestamptz()
-  rejectedReason          String?   @map("rejected_reason") @db.VarChar(200)
-  riskScore               Decimal?  @map("risk_score") @db.Decimal(5, 2)
-  riskFlag                Boolean   @default(false) @map("risk_flag")
-  // INET 타입: Prisma는 String으로 매핑, DB 레벨에서 INET 유지
-  ipAddress               String?   @map("ip_address")
-  deviceFingerprint       String?   @map("device_fingerprint") @db.VarChar(100)
-  remark                  String?   @db.VarChar(200)
-  memo                    String?   @db.Text
-  transactionDate         String    @map("transaction_date") @db.VarChar(10)
-  transactedAt            DateTime  @default(now()) @map("transacted_at") @db.Timestamptz()
-  createdBy               String?   @map("created_by") @db.Uuid
-  updatedBy               String?   @map("updated_by") @db.Uuid
-  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  transactionId            String    @id @default(dbgenerated("gen_random_uuid()")) @map("transaction_id") @db.Uuid
+  accountId                String    @map("account_id") @db.Uuid
+  transactionType          String    @map("transaction_type") @db.VarChar(20)
+  amount                   Decimal   @db.Decimal(15, 2)
+  balanceBefore            Decimal   @map("balance_before") @db.Decimal(15, 2)
+  balanceAfter             Decimal   @map("balance_after") @db.Decimal(15, 2)
+  transactionStatus        String    @default("COMPLETED") @map("transaction_status") @db.VarChar(20)
+  channel                  String?   @db.VarChar(20)
+  counterpartAccountNumber String?   @map("counterpart_account_number") @db.VarChar(30)
+  counterpartBankCode      String?   @map("counterpart_bank_code") @db.VarChar(10)
+  counterpartName          String?   @map("counterpart_name") @db.VarChar(100)
+  counterpartyPartyId      String?   @map("counterparty_party_id") @db.Uuid
+  counterpartyAccountId    String?   @map("counterparty_account_id") @db.Uuid
+  bankCode                 String?   @map("bank_code") @db.VarChar(10)
+  transferer               String?   @db.VarChar(20)
+  remitter                 String?   @db.VarChar(20)
+  transactionNo            String?   @unique @map("transaction_no") @db.VarChar(30)
+  transactionKey           String?   @unique @map("transaction_key") @db.VarChar(50)
+  referenceNo              String?   @map("reference_no") @db.VarChar(50)
+  instructionId            String?   @map("instruction_id") @db.Uuid
+  taxAmount                Decimal?  @map("tax_amount") @db.Decimal(15, 2)
+  transferMethod           String?   @map("transfer_method") @db.VarChar(20)
+  settlementDate           String?   @map("settlement_date") @db.VarChar(10)
+  approvedBy               String?   @map("approved_by") @db.Uuid
+  approvedAt               DateTime? @map("approved_at") @db.Timestamptz()
+  rejectedReason           String?   @map("rejected_reason") @db.VarChar(200)
+  retryCount               Int       @default(0) @map("retry_count") @db.SmallInt
+  riskScore                Decimal?  @map("risk_score") @db.Decimal(5, 2)
+  riskFlag                 Boolean   @default(false) @map("risk_flag")
+  ipAddress                String?   @map("ip_address")  // INET 타입: DB 레벨 유지
+  deviceFingerprint        String?   @map("device_fingerprint") @db.VarChar(100)
+  remark                   String?   @db.VarChar(200)
+  memo                     String?   @db.Text
+  transactionDate          String    @map("transaction_date") @db.VarChar(10)
+  transactedAt             DateTime  @default(now()) @map("transacted_at") @db.Timestamptz()
+  createdBy                String?   @map("created_by") @db.Uuid
+  updatedBy                String?   @map("updated_by") @db.Uuid
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  account             Account   @relation("AccountTxns", fields: [accountId], references: [accountId])
-  counterpartyParty   Party?    @relation("CounterpartyPartyTxns", fields: [counterpartyPartyId], references: [partyId])
-  counterpartyAccount Account?  @relation("CounterpartyAccountTxns", fields: [counterpartyAccountId], references: [accountId])
-  approver            Employee? @relation(fields: [approvedBy], references: [employeeId])
+  account             Account              @relation("AccountTxns", fields: [accountId], references: [accountId])
+  counterpartyParty   Party?               @relation("CounterpartyPartyTxns", fields: [counterpartyPartyId], references: [partyId])
+  counterpartyAccount Account?             @relation("CounterpartyAccountTxns", fields: [counterpartyAccountId], references: [accountId])
+  approver            Employee?            @relation(fields: [approvedBy], references: [employeeId])
+  instruction         TransferInstruction? @relation(fields: [instructionId], references: [instructionId])
   savingsPayments     SavingsPayment[]
 
   @@index([accountId], map: "idx_transaction_account_id")
   @@index([transactedAt(sort: Desc)], map: "idx_transaction_transacted_at")
   @@index([transactionType], map: "idx_transaction_type")
   @@index([referenceNo], map: "idx_transaction_reference_no")
-  @@index([batchId], map: "idx_transaction_batch_id")
+  @@index([instructionId], map: "idx_transaction_instruction_id")
   @@index([riskFlag], map: "idx_transaction_risk_flag")
   @@index([settlementDate], map: "idx_transaction_settlement")
   @@map("transaction")
 }
 
 // ============================================================
-// 15. 적금 납입 회차
+// 16. 적금 납입 회차
 // ============================================================
 model SavingsPayment {
   savingsPaymentId     String    @id @default(dbgenerated("gen_random_uuid()")) @map("savings_payment_id") @db.Uuid
+  contractId           String?   @map("contract_id") @db.Uuid
   accountId            String    @map("account_id") @db.Uuid
   installmentNo        Int       @map("installment_no") @db.SmallInt
   scheduledDate        DateTime  @map("scheduled_date") @db.Date
@@ -649,111 +737,55 @@ model SavingsPayment {
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
+  contract    Contract?    @relation(fields: [contractId], references: [contractId])
   account     Account      @relation(fields: [accountId], references: [accountId])
   transaction Transaction? @relation(fields: [transactionId], references: [transactionId])
 
   @@unique([accountId, installmentNo])
+  @@index([contractId], map: "idx_savings_payment_contract")
   @@index([accountId], map: "idx_savings_payment_account")
   @@index([savingsPaymentStatus], map: "idx_savings_payment_status")
   @@map("savings_payment")
 }
 
 // ============================================================
-// 16. 내부 원장 계좌
+// 25. 문서 (파일 저장 + 범용 첨부 — 대출·계약·KYC 등)
 // ============================================================
-model InternalAccount {
-  internalAccountId     String   @id @default(dbgenerated("gen_random_uuid()")) @map("internal_account_id") @db.Uuid
-  internalAccountNumber String   @unique @map("internal_account_number") @db.VarChar(30)
-  contractId            String?  @map("contract_id") @db.Uuid
-  internalType          String   @map("internal_type") @db.VarChar(30)
-  internalAccountStatus String   @default("ACTIVE") @map("internal_account_status") @db.VarChar(20)
-  creditLimit           Decimal? @map("credit_limit") @db.Decimal(15, 2)
-  balance               Decimal  @default(0) @db.Decimal(15, 2)
-  currencyCode          String   @default("KRW") @map("currency_code") @db.Char(3)
-  openedDate            String   @map("opened_date") @db.VarChar(10)
-  closedDate            String?  @map("closed_date") @db.VarChar(10)
-  createdBy             String?  @map("created_by") @db.Uuid
-  updatedBy             String?  @map("updated_by") @db.Uuid
-  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  contract        Contract?       @relation(fields: [contractId], references: [contractId])
-  accountMappings AccountMapping[]
-
-  @@index([contractId], map: "idx_internal_account_contract")
-  @@index([internalAccountStatus], map: "idx_internal_account_status")
-  @@map("internal_account")
-}
-
-model AccountMapping {
-  mappingId         String    @id @default(dbgenerated("gen_random_uuid()")) @map("mapping_id") @db.Uuid
-  repAccountId      String    @map("rep_account_id") @db.Uuid
-  internalAccountId String    @map("internal_account_id") @db.Uuid
-  mapType           String    @map("map_type") @db.VarChar(30)
-  statusCode        String    @default("ACTIVE") @map("status_code") @db.VarChar(20)
-  priority          Int       @default(1) @db.SmallInt
-  effDtm            DateTime? @map("eff_dtm") @db.Timestamptz()
+model Document {
+  documentId        String    @id @default(dbgenerated("gen_random_uuid()")) @map("document_id") @db.Uuid
+  originalName      String    @map("original_name") @db.VarChar(255)
+  storedName        String?   @map("stored_name") @db.VarChar(255)
+  fileUrl           String    @map("file_url") @db.Text
+  fileSize          BigInt?   @map("file_size")
+  mimeType          String?   @map("mime_type") @db.VarChar(100)
+  uploadStatus      String    @default("COMPLETED") @map("upload_status") @db.VarChar(20)
+  uploadedBy        String?   @map("uploaded_by") @db.Uuid
+  uploadedAt        DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz()
+  entityType        String    @map("entity_type") @db.VarChar(30)   // LOAN_APPLICATION | CONTRACT | ACCOUNT | KYC | OTHER
+  entityId          String    @map("entity_id") @db.Uuid             // 연결 대상 PK (폴리모픽)
+  documentType      String    @map("document_type") @db.VarChar(50)
+  verified          Boolean   @default(false)
+  verifiedBy        String?   @map("verified_by") @db.Uuid
+  verifiedAt        DateTime? @map("verified_at") @db.Timestamptz()
+  submittedAt       DateTime  @default(now()) @map("submitted_at") @db.Timestamptz()
+  submitterPartyId  String?   @map("submitter_party_id") @db.Uuid
   createdBy         String?   @map("created_by") @db.Uuid
   updatedBy         String?   @map("updated_by") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  repAccount      Account         @relation(fields: [repAccountId], references: [accountId])
-  internalAccount InternalAccount @relation(fields: [internalAccountId], references: [internalAccountId])
+  uploader  Party?    @relation("DocumentUploadedBy", fields: [uploadedBy], references: [partyId])
+  submitter Party?    @relation("DocumentSubmittedBy", fields: [submitterPartyId], references: [partyId])
+  verifier  Employee? @relation(fields: [verifiedBy], references: [employeeId])
 
-  @@unique([repAccountId, internalAccountId])
-  @@index([repAccountId], map: "idx_account_mapping_rep")
-  @@index([internalAccountId], map: "idx_account_mapping_internal")
-  @@index([statusCode], map: "idx_account_mapping_status")
-  @@map("account_mapping")
+  @@index([entityType, entityId], map: "idx_document_entity")
+  @@index([uploadedBy], map: "idx_document_uploaded_by")
+  @@index([submitterPartyId], map: "idx_document_submitter")
+  @@map("document")
 }
 
 // ============================================================
-// 17-18. 기업뱅킹
-// ============================================================
-model CorporateRolePolicy {
-  role                String   @id @db.VarChar(30)
-  canTransfer         Boolean  @default(false) @map("can_transfer")
-  canApprove          Boolean  @default(false) @map("can_approve")
-  transferLimitPerTx  Decimal? @map("transfer_limit_per_tx") @db.Decimal(15, 2)
-  transferLimitPerDay Decimal? @map("transfer_limit_per_day") @db.Decimal(15, 2)
-  createdBy           String?  @map("created_by") @db.Uuid
-  updatedBy           String?  @map("updated_by") @db.Uuid
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  corporateUsers CorporateUser[]
-
-  @@map("corporate_role_policy")
-}
-
-model CorporateUser {
-  corporateUserId         String    @id @default(dbgenerated("gen_random_uuid()")) @map("corporate_user_id") @db.Uuid
-  corporateId             String    @map("corporate_id") @db.Uuid
-  corporateUserEmail      String    @unique @map("corporate_user_email") @db.VarChar(255)
-  corporateUserName       String    @map("corporate_user_name") @db.VarChar(100)
-  corporateUserDepartment String?   @map("corporate_user_department") @db.VarChar(100)
-  corporateUserPosition   String?   @map("corporate_user_position") @db.VarChar(100)
-  corporateUserRole       String    @default("VIEWER") @map("corporate_user_role") @db.VarChar(30)
-  corporateUserStatus     String    @default("ACTIVE") @map("corporate_user_status") @db.VarChar(20)
-  failedAttemptCount      Int       @default(0) @map("failed_attempt_count")
-  lockedAt                DateTime? @map("locked_at") @db.Timestamptz()
-  lastLoginAt             DateTime? @map("last_login_at") @db.Timestamptz()
-  createdBy               String?   @map("created_by") @db.Uuid
-  updatedBy               String?   @map("updated_by") @db.Uuid
-  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  corporate  Corporate           @relation(fields: [corporateId], references: [corporateId])
-  rolePolicy CorporateRolePolicy @relation(fields: [corporateUserRole], references: [role])
-
-  @@index([corporateId], map: "idx_corporate_user_corp")
-  @@index([corporateUserEmail], map: "idx_corporate_user_email")
-  @@map("corporate_user")
-}
-
-// ============================================================
-// 25. 대출 신청 프로세스
+// 27. 대출 신청 프로세스
 // ============================================================
 model LoanApplication {
   applicationId         String    @id @default(dbgenerated("gen_random_uuid()")) @map("application_id") @db.Uuid
@@ -762,14 +794,27 @@ model LoanApplication {
   requestedAmount       Decimal   @map("requested_amount") @db.Decimal(15, 2)
   requestedPeriodMonths Int?      @map("requested_period_months")
   loanPurpose           String?   @map("loan_purpose") @db.VarChar(100)
+  applicantVerified     Boolean   @default(false) @map("applicant_verified")
+  agentAuthorization    Boolean?  @default(false) @map("agent_authorization")
+  agentId               String?   @map("agent_id") @db.Uuid
+  creditCheckDelegated  Boolean   @default(false) @map("credit_check_delegated")
   applicationStatus     String    @default("DRAFT") @map("application_status") @db.VarChar(20)
   approvedAmount        Decimal?  @map("approved_amount") @db.Decimal(15, 2)
   approvedRate          Decimal?  @map("approved_rate") @db.Decimal(7, 4)
   rejectionReason       String?   @map("rejection_reason") @db.VarChar(500)
+  creditReviewResult    String?   @map("credit_review_result") @db.Text
+  fundNecessityReview   String?   @map("fund_necessity_review") @db.Text
+  collateralReview      String?   @map("collateral_review") @db.Text
+  profitabilityReview   String?   @map("profitability_review") @db.Text
+  creditGrade           String?   @map("credit_grade") @db.VarChar(10)
+  approvalAuthorityId   String?   @map("approval_authority_id") @db.Uuid
+  approvedAt            DateTime? @map("approved_at") @db.Timestamptz()
   contractId            String?   @map("contract_id") @db.Uuid
   channel               String?   @db.VarChar(20)
   branchId              String?   @map("branch_id") @db.Uuid
   employeeId            String?   @map("employee_id") @db.Uuid
+  consultationDate      String?   @map("consultation_date") @db.VarChar(10)
+  consultationMemo      String?   @map("consultation_memo") @db.Text
   submittedAt           DateTime? @map("submitted_at") @db.Timestamptz()
   decidedAt             DateTime? @map("decided_at") @db.Timestamptz()
   createdBy             String?   @map("created_by") @db.Uuid
@@ -777,14 +822,14 @@ model LoanApplication {
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  party         Party             @relation(fields: [partyId], references: [partyId])
-  product       Product           @relation(fields: [productId], references: [productId])
-  contract      Contract?         @relation(fields: [contractId], references: [contractId])
-  branch        Branch?           @relation(fields: [branchId], references: [branchId])
-  employee      Employee?         @relation(fields: [employeeId], references: [employeeId])
-  approvalSteps LoanApprovalStep[]
-  documents     LoanDocument[]
-  collaterals   LoanCollateral[]
+  party             Party              @relation(fields: [partyId], references: [partyId])
+  product           Product            @relation(fields: [productId], references: [productId])
+  contract          Contract?          @relation(fields: [contractId], references: [contractId])
+  branch            Branch?            @relation(fields: [branchId], references: [branchId])
+  employee          Employee?          @relation(fields: [employeeId], references: [employeeId])
+  approvalAuthority Employee?          @relation("ApprovalAuthority", fields: [approvalAuthorityId], references: [employeeId])
+  approvalSteps     LoanApprovalStep[]
+  collaterals       LoanCollateral[]
 
   @@index([partyId], map: "idx_loan_application_party")
   @@index([productId], map: "idx_loan_application_product")
@@ -800,6 +845,8 @@ model LoanApprovalStep {
   stepStatus    String    @default("PENDING") @map("step_status") @db.VarChar(20)
   comment       String?   @db.Text
   decidedAt     DateTime? @map("decided_at") @db.Timestamptz()
+  authorityLevel Int?     @map("authority_level")
+  authorityName  String?  @map("authority_name") @db.VarChar(100)
   createdBy     String?   @map("created_by") @db.Uuid
   updatedBy     String?   @map("updated_by") @db.Uuid
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
@@ -813,41 +860,26 @@ model LoanApprovalStep {
   @@map("loan_approval_step")
 }
 
-model LoanDocument {
-  documentId    String    @id @default(dbgenerated("gen_random_uuid()")) @map("document_id") @db.Uuid
-  applicationId String    @map("application_id") @db.Uuid
-  documentType  String    @map("document_type") @db.VarChar(50)
-  fileName      String?   @map("file_name") @db.VarChar(255)
-  fileUrl       String?   @map("file_url") @db.Text
-  verified      Boolean   @default(false)
-  verifiedBy    String?   @map("verified_by") @db.Uuid
-  verifiedAt    DateTime? @map("verified_at") @db.Timestamptz()
-  createdBy     String?   @map("created_by") @db.Uuid
-  updatedBy     String?   @map("updated_by") @db.Uuid
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  application LoanApplication @relation(fields: [applicationId], references: [applicationId])
-  verifier    Employee?       @relation(fields: [verifiedBy], references: [employeeId])
-
-  @@index([applicationId], map: "idx_loan_document_application")
-  @@map("loan_document")
-}
-
 model LoanCollateral {
-  collateralId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("collateral_id") @db.Uuid
-  applicationId   String   @map("application_id") @db.Uuid
-  collateralType  String   @map("collateral_type") @db.VarChar(30)
-  propertyAddress String?  @map("property_address") @db.VarChar(300)
-  propertyRegNo   String?  @map("property_reg_no") @db.VarChar(30)
-  appraisedValue  Decimal? @map("appraised_value") @db.Decimal(15, 2)
-  appraisedAt     String?  @map("appraised_at") @db.VarChar(10)
-  appraiser       String?  @db.VarChar(100)
-  lienAmount      Decimal? @map("lien_amount") @db.Decimal(15, 2)
-  createdBy       String?  @map("created_by") @db.Uuid
-  updatedBy       String?  @map("updated_by") @db.Uuid
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  collateralId          String    @id @default(dbgenerated("gen_random_uuid()")) @map("collateral_id") @db.Uuid
+  applicationId         String    @map("application_id") @db.Uuid
+  collateralType        String    @map("collateral_type") @db.VarChar(30)
+  propertyAddress       String?   @map("property_address") @db.VarChar(300)
+  propertyRegNo         String?   @map("property_reg_no") @db.VarChar(30)
+  appraisedValue        Decimal?  @map("appraised_value") @db.Decimal(15, 2)
+  appraisedAt           String?   @map("appraised_at") @db.VarChar(10)
+  appraiser             String?   @db.VarChar(100)
+  selfAppraised         Boolean   @default(false) @map("self_appraised")
+  appraisalRequestedAt  DateTime? @map("appraisal_requested_at") @db.Timestamptz()
+  appraisalCompletedAt  DateTime? @map("appraisal_completed_at") @db.Timestamptz()
+  lienAmount            Decimal?  @map("lien_amount") @db.Decimal(15, 2)
+  lienRegisteredAt      String?   @map("lien_registered_at") @db.VarChar(10)
+  lienRegNo             String?   @map("lien_reg_no") @db.VarChar(50)
+  lienConfirmed         Boolean   @default(false) @map("lien_confirmed")
+  createdBy             String?   @map("created_by") @db.Uuid
+  updatedBy             String?   @map("updated_by") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
   application LoanApplication @relation(fields: [applicationId], references: [applicationId])
 
@@ -864,6 +896,10 @@ model LoanDelinquency {
   overdueDays       Int      @map("overdue_days")
   startedAt         DateTime @map("started_at") @db.Date
   recoveredAt       String?  @map("recovered_at") @db.VarChar(10)
+  fundMisuseFlag    Boolean  @default(false) @map("fund_misuse_flag")
+  fundMisuseDetail  String?  @map("fund_misuse_detail") @db.Text
+  collectionMethod  String?  @map("collection_method") @db.VarChar(20)
+  extensionHistory  Json?    @map("extension_history") @db.JsonB
   createdBy         String?  @map("created_by") @db.Uuid
   updatedBy         String?  @map("updated_by") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
@@ -877,12 +913,12 @@ model LoanDelinquency {
 }
 
 // ============================================================
-// 27. 알림
+// 28. 알림
 // ============================================================
 model Notification {
   notificationId String   @id @default(dbgenerated("gen_random_uuid()")) @map("notification_id") @db.Uuid
   partyId        String   @map("party_id") @db.Uuid
-  type           String   @db.VarChar(50)   // TRANSFER_OUT | TRANSFER_IN | LOW_BALANCE | ACCOUNT_LOCKED | SAVINGS_DUE | SAVINGS_PAID | SAVINGS_MATURITY | RISK_ALERT
+  type           String   @db.VarChar(50)
   title          String   @db.VarChar(200)
   body           String   @db.VarChar(500)
   isRead         Boolean  @default(false) @map("is_read")
@@ -895,32 +931,4 @@ model Notification {
   @@index([partyId, isRead], map: "idx_notification_party_read")
   @@index([createdAt(sort: Desc)], map: "idx_notification_created_at")
   @@map("notification")
-}
-
-// ============================================================
-// 26. 감사 로그
-// ============================================================
-model AuditLog {
-  auditId              String    @id @default(dbgenerated("gen_random_uuid()")) @map("audit_id") @db.Uuid
-  tableName            String    @map("table_name") @db.VarChar(100)
-  recordId             String    @map("record_id") @db.Uuid
-  operation            String    @db.VarChar(10)
-  oldValues            Json?     @map("old_values") @db.JsonB
-  newValues            Json?     @map("new_values") @db.JsonB
-  changedBy            String    @map("changed_by") @db.Uuid
-  changedAt            DateTime  @default(now()) @map("changed_at") @db.Timestamptz()
-  complianceRequired   Boolean   @default(false) @map("compliance_required")
-  complianceApproved   Boolean?  @map("compliance_approved")
-  complianceApprovedBy String?   @map("compliance_approved_by") @db.Uuid
-  complianceApprovedAt DateTime? @map("compliance_approved_at") @db.Timestamptz()
-  ipAddress            String?   @map("ip_address")
-  sessionId            String?   @map("session_id") @db.VarChar(100)
-  createdBy            String?   @map("created_by") @db.Uuid
-  updatedBy            String?   @map("updated_by") @db.Uuid
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-
-  @@index([tableName, recordId], map: "idx_audit_table_record")
-  @@index([changedAt(sort: Desc)], map: "idx_audit_changed_at")
-  @@map("audit_log")
 }

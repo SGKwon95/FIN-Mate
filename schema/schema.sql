@@ -1,4 +1,4 @@
--- ============================================================
+﻿-- ============================================================
 -- 금융상품 DB 스키마 (PostgreSQL)
 -- 작성일: 2026-05-11
 -- 대상 DBMS: PostgreSQL 14+
@@ -237,6 +237,7 @@ CREATE TABLE product (
     -- 예금자 보호 (예금보험공사, 1인당 5천만원 한도)
     is_deposit_insured                  BOOLEAN      NOT NULL DEFAULT FALSE,
     deposit_insurance_limit             NUMERIC(15,2),         -- 통상 50,000,000
+    description                         TEXT,
 
     -- 감사 공통 필드
     created_by                          UUID         NOT NULL,
@@ -1087,3 +1088,60 @@ CREATE TABLE loan_delinquency (
 
 CREATE INDEX idx_loan_delinquency_contract ON loan_delinquency (contract_id);
 CREATE INDEX idx_loan_delinquency_status   ON loan_delinquency (delinquency_status);
+
+
+-- ============================================================
+-- 28. 알림
+-- ============================================================
+CREATE TABLE notification (
+    notification_id     UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    party_id            UUID          NOT NULL REFERENCES party(party_id),
+
+    type                VARCHAR(50)   NOT NULL
+                            CHECK (type IN (
+                                'TRANSFER_OUT', 'TRANSFER_IN', 'LOW_BALANCE', 'ACCOUNT_LOCKED',
+                                'SAVINGS_DUE', 'SAVINGS_PAID', 'SAVINGS_MATURITY', 'RISK_ALERT'
+                            )),
+    title               VARCHAR(200)  NOT NULL,
+    body                VARCHAR(500)  NOT NULL,
+    is_read             BOOLEAN       NOT NULL DEFAULT FALSE,
+    linked_entity_id    UUID,
+
+    created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_notification_party_read ON notification (party_id, is_read);
+CREATE INDEX idx_notification_created_at ON notification (created_at DESC);
+
+
+-- ============================================================
+-- 29. 감사 로그 (Audit Trail) — 모든 테이블 변경 이력
+-- -- ============================================================
+-- CREATE TABLE audit_log (
+--     audit_id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+--     table_name              VARCHAR(100) NOT NULL,
+--     record_id               UUID         NOT NULL,
+--     operation               VARCHAR(10)  NOT NULL CHECK (operation IN ('INSERT', 'UPDATE', 'DELETE')),
+--     old_values              JSONB,
+--     new_values              JSONB,
+--     changed_by              UUID         NOT NULL,
+--     changed_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+--     -- 내부통제: 준법감시인 승인 필요 여부
+--     compliance_required     BOOLEAN      NOT NULL DEFAULT FALSE,
+--     compliance_approved     BOOLEAN,
+--     compliance_approved_by  UUID,
+--     compliance_approved_at  TIMESTAMPTZ,
+
+--     ip_address              INET,
+--     session_id              VARCHAR(100),
+
+--     created_by              UUID,
+--     updated_by              UUID,
+--     created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+--     updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+-- );
+
+-- CREATE INDEX idx_audit_table_record ON audit_log (table_name, record_id);
+-- CREATE INDEX idx_audit_changed_at   ON audit_log (changed_at DESC);
