@@ -70,7 +70,7 @@ async function main() {
         account_id: string; party_id: string; balance: string; account_status: string; is_locked: boolean
       }>>`
         SELECT account_id, party_id, balance, account_status, is_locked
-        FROM accounts
+        FROM account
         WHERE REPLACE(account_number, '-', '') = ${req.toAccountNumber}
         LIMIT 1
       `
