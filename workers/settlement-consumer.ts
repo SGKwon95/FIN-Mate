@@ -128,6 +128,7 @@ async function main() {
         await prisma.$transaction([
           prisma.kftcReceipt.create({
             data: {
+              direction:      'OUTBOUND',
               instructionId:  txn.instructionId,
               rspCode:        isCompleted ? '000' : (msg.failureCode ?? 'ERR'),
               rspMessage:     isCompleted ? '정상' : '실패',

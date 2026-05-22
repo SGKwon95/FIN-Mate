@@ -10,11 +10,12 @@ export const metadata: Metadata = { title: "거래내역 조회" }
 
 const CREDIT_TYPES = new Set(["DEPOSIT", "TRANSFER_IN", "INTEREST"])
 const CHANNEL_LABEL: Record<string, string> = {
-  TELLER: "영업점",
-  APP:    "앱",
-  AUTO:   "자동",
-  ATM:    "ATM",
-  WEB:    "인터넷",
+  TELLER:    "영업점",
+  APP:       "앱",
+  AUTO:      "자동",
+  ATM:       "ATM",
+  WEB:       "인터넷",
+  INTERBANK: "타행이체",
 }
 const ACCOUNT_PURPOSE_LABEL: Record<string, string> = {
   GENERAL:      "입출금",

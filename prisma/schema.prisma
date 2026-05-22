@@ -637,7 +637,9 @@ model TransferInstruction {
 // ============================================================
 model KftcReceipt {
   receiptId        String   @id @default(dbgenerated("gen_random_uuid()")) @map("receipt_id") @db.Uuid
-  instructionId    String   @map("instruction_id") @db.Uuid
+  direction        String   @default("OUTBOUND") @map("direction") @db.VarChar(10)
+  instructionId    String?  @map("instruction_id") @db.Uuid
+  transactionId    String?  @unique @map("transaction_id") @db.Uuid
   rspCode          String   @map("rsp_code") @db.VarChar(10)
   rspMessage       String?  @map("rsp_message") @db.VarChar(200)
   bankRspCode      String?  @map("bank_rsp_code") @db.VarChar(10)
@@ -650,15 +652,18 @@ model KftcReceipt {
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 
-  instruction TransferInstruction @relation(fields: [instructionId], references: [instructionId])
+  instruction TransferInstruction? @relation(fields: [instructionId], references: [instructionId])
+  transaction Transaction?         @relation(fields: [transactionId], references: [transactionId])
 
   @@index([instructionId], map: "idx_kftc_receipt_instruction")
+  @@index([transactionId], map: "idx_kftc_receipt_transaction")
   @@index([bankTranId], map: "idx_kftc_receipt_bank_tran")
+  @@index([direction], map: "idx_kftc_receipt_direction")
   @@map("kftc_receipt")
 }
 
 // ============================================================
-// 15. 거래 내역
+// 16. 거래 내역
 // ============================================================
 model Transaction {
   transactionId            String    @id @default(dbgenerated("gen_random_uuid()")) @map("transaction_id") @db.Uuid
@@ -707,6 +712,7 @@ model Transaction {
   approver            Employee?            @relation(fields: [approvedBy], references: [employeeId])
   instruction         TransferInstruction? @relation(fields: [instructionId], references: [instructionId])
   savingsPayments     SavingsPayment[]
+  kftcReceipt         KftcReceipt?
 
   @@index([accountId], map: "idx_transaction_account_id")
   @@index([transactedAt(sort: Desc)], map: "idx_transaction_transacted_at")

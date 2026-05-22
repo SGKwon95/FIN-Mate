@@ -9,6 +9,7 @@
 import { kafka, TOPICS } from '@/lib/kafka'
 import { prisma } from '@/lib/prisma'
 import { toKSTDateCode } from '@/lib/formatters'
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
 const OWN_BANK_CODE = '004'
 
@@ -92,12 +93,8 @@ async function main() {
         const txDate        = toKSTDateCode(now)
         const txNo          = `IN${Date.now()}`
 
-        await prisma.$transaction([
-          prisma.account.update({
-            where: { accountId: account.accountId },
-            data:  { balance: balanceAfter, lastTransactionAt: now },
-          }),
-          prisma.transaction.create({
+        await prisma.$transaction(async (tx: TxClient) => {
+          const created = await tx.transaction.create({
             data: {
               accountId:                account.accountId,
               transactionType:          'TRANSFER_IN',
@@ -115,16 +112,30 @@ async function main() {
               transactionDate:          txDate,
               transactedAt:             now,
             },
-          }),
-          prisma.notification.create({
+          })
+          await tx.account.update({
+            where: { accountId: account.accountId },
+            data:  { balance: balanceAfter, lastTransactionAt: now },
+          })
+          await tx.notification.create({
             data: {
               partyId:           account.partyId,
               notificationType:  'TRANSFER_IN',
               notificationTitle: '타행 입금',
               notificationBody:  `${req.fromPartyName}님으로부터 ${req.amount.toLocaleString('ko-KR')}원이 입금되었습니다.`,
             },
-          }),
-        ])
+          })
+          await tx.kftcReceipt.create({
+            data: {
+              direction:     'INBOUND',
+              transactionId: created.transactionId,
+              rspCode:       '000',
+              rspMessage:    '정상',
+              bankTranId:    req.transactionNo,
+              receivedAt:    now,
+            },
+          })
+        })
 
         status = 'COMPLETED'
         console.log(`[FIN-Mate 인바운드] ✔ 입금 완료: ${req.toAccountNumber} +${req.amount.toLocaleString('ko-KR')}원 (잔액: ${balanceAfter.toLocaleString('ko-KR')}원)`)
