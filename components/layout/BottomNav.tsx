@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
   { href: "/dashboard",        icon: Home,           label: "홈",  match: "/dashboard" },
-  { href: "/accounts",         icon: Search,         label: "조회", match: ["/accounts", "/transactions"] },
-  { href: "/transfer",         icon: ArrowLeftRight, label: "이체", match: "/transfer" },
+  { href: "/accounts",         icon: Search,         label: "조회", match: ["/accounts", "/transactions", "/rates"] },
+  { href: "/transfer",         icon: ArrowLeftRight, label: "이체", match: ["/transfer", "/auto-transfer"] },
   { href: "/products/deposit", icon: TrendingUp,     label: "상품", match: "/products" },
   { href: "/settings",         icon: Settings,       label: "설정", match: "/settings" },
 ]

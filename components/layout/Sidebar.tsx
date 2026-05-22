@@ -15,6 +15,9 @@ import {
   PiggyBank,
   Banknote,
   TrendingUp,
+  Percent,
+  RefreshCw,
+  Calculator,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,11 +44,27 @@ const NAV_ITEMS: NavItem[] = [
     label: "조회",
     icon: Search,
     children: [
-      { href: "/accounts", icon: CreditCard, label: "내 계좌" },
-      { href: "/transactions", icon: History, label: "거래내역" },
+      { href: "/accounts",     icon: CreditCard, label: "내 계좌" },
+      { href: "/transactions", icon: History,    label: "거래내역" },
     ],
   },
-  { href: "/transfer", icon: ArrowLeftRight, label: "이체" },
+  {
+    label: "금리",
+    icon: Percent,
+    basePath: "/rates",
+    children: [
+      { href: "/rates",          icon: Percent,     label: "적용금리" },
+      { href: "/rates/estimate", icon: Calculator,  label: "예상금리" },
+    ],
+  },
+  {
+    label: "이체",
+    icon: ArrowLeftRight,
+    children: [
+      { href: "/transfer",      icon: ArrowLeftRight, label: "즉시이체" },
+      { href: "/auto-transfer", icon: RefreshCw,      label: "자동이체" },
+    ],
+  },
   {
     label: "상품",
     icon: TrendingUp,

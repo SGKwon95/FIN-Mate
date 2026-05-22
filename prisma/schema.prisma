@@ -73,6 +73,7 @@ model Party {
   approvedInstructions       TransferInstruction[]    @relation("InstructionApprovedBy")
   uploadedDocuments          Document[]               @relation("DocumentUploadedBy")
   submittedDocuments         Document[]               @relation("DocumentSubmittedBy")
+  scheduledTransfers         ScheduledTransfer[]
 
   @@map("party")
 }
@@ -584,9 +585,10 @@ model Account {
   party    Party     @relation(fields: [partyId], references: [partyId])
   contract Contract? @relation(fields: [contractId], references: [contractId])
 
-  transactions     Transaction[] @relation("AccountTxns")
-  counterpartyTxns Transaction[] @relation("CounterpartyAccountTxns")
-  savingsPayments  SavingsPayment[]
+  transactions       Transaction[] @relation("AccountTxns")
+  counterpartyTxns   Transaction[] @relation("CounterpartyAccountTxns")
+  savingsPayments    SavingsPayment[]
+  scheduledTransfers ScheduledTransfer[]
 
   @@index([partyId], map: "idx_account_party_id")
   @@index([contractId], map: "idx_account_contract_id")
@@ -937,4 +939,49 @@ model Notification {
   @@index([partyId, isRead], map: "idx_notification_party_read")
   @@index([createdAt(sort: Desc)], map: "idx_notification_created_at")
   @@map("notification")
+}
+
+// ============================================================
+// 29. 자동이체
+// ============================================================
+model ScheduledTransfer {
+  scheduledTransferId String   @id @default(dbgenerated("gen_random_uuid()")) @map("scheduled_transfer_id") @db.Uuid
+  partyId             String   @map("party_id") @db.Uuid
+  fromAccountId       String   @map("from_account_id") @db.Uuid
+  toBankCode          String   @map("to_bank_code") @db.VarChar(10)
+  toAccountNumber     String   @map("to_account_number") @db.VarChar(30)
+  toAccountName       String   @map("to_account_name") @db.VarChar(100)
+  amount              Decimal  @db.Decimal(15, 2)
+  memo                String?  @db.VarChar(200)
+  transferDay         Int      @map("transfer_day") @db.SmallInt
+  startDate           String   @map("start_date") @db.VarChar(8)
+  endDate             String?  @map("end_date") @db.VarChar(8)
+  status              String   @default("ACTIVE") @map("status") @db.VarChar(20)
+  lastExecutedDate    String?  @map("last_executed_date") @db.VarChar(8)
+  nextExecutionDate   String?  @map("next_execution_date") @db.VarChar(8)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+
+  party       Party   @relation(fields: [partyId], references: [partyId])
+  fromAccount Account @relation(fields: [fromAccountId], references: [accountId])
+  executions  ScheduledTransferExecution[]
+
+  @@index([partyId], map: "idx_scheduled_transfer_party")
+  @@index([status, nextExecutionDate], map: "idx_scheduled_transfer_active")
+  @@map("scheduled_transfer")
+}
+
+model ScheduledTransferExecution {
+  executionId         String   @id @default(dbgenerated("gen_random_uuid()")) @map("execution_id") @db.Uuid
+  scheduledTransferId String   @map("scheduled_transfer_id") @db.Uuid
+  transactionId       String?  @map("transaction_id") @db.Uuid
+  executionDate       String   @map("execution_date") @db.VarChar(8)
+  status              String   @map("status") @db.VarChar(20)
+  failureReason       String?  @map("failure_reason") @db.VarChar(200)
+  executedAt          DateTime @default(now()) @map("executed_at") @db.Timestamptz()
+
+  scheduledTransfer ScheduledTransfer @relation(fields: [scheduledTransferId], references: [scheduledTransferId])
+
+  @@index([scheduledTransferId], map: "idx_ste_scheduled")
+  @@map("scheduled_transfer_execution")
 }

@@ -13,7 +13,8 @@
     "kafka:settlement": "tsx --env-file=.env workers/settlement-consumer.ts",
     "kafka:inbound": "tsx --env-file=.env workers/inbound-consumer.ts",
     "kafka:all": "concurrently -n gateway,simulator,settlement,inbound -c blue,yellow,green,cyan \"npm run kafka:gateway\" \"npm run kafka:simulator\" \"npm run kafka:settlement\" \"npm run kafka:inbound\"",
-    "kafka:seed": "tsx interbank-simulator/seed.ts"
+    "kafka:seed": "tsx interbank-simulator/seed.ts",
+    "worker:scheduled": "tsx --env-file=.env workers/scheduled-transfer-worker.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
