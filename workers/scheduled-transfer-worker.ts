@@ -253,21 +253,14 @@ async function processSchedules() {
 
 async function main() {
   await producer.connect()
-  console.log('[자동이체 워커] 시작 — 1분마다 실행')
-
-  // 시작 즉시 한 번 실행
-  await processSchedules()
-
-  setInterval(async () => {
-    try {
-      await processSchedules()
-    } catch (err) {
-      console.error('[자동이체 워커] 오류:', err)
-    }
-  }, 60_000)
+  try {
+    await processSchedules()
+  } finally {
+    await producer.disconnect()
+  }
 }
 
 main().catch((err) => {
-  console.error('[자동이체 워커] 초기화 실패:', err)
+  console.error('[자동이체 워커] 오류:', err)
   process.exit(1)
 })
