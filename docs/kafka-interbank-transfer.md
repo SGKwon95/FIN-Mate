@@ -49,30 +49,34 @@
 
 ## 사전 조건
 
-- WSL에 Kafka 설치 및 Zookeeper/Broker 실행 (기본 포트 `localhost:9092`)
-- `.env.local`에 `DATABASE_URL` 설정 완료
+- Kafka 브로커가 별도 서버(Docker)에서 실행 중: `192.168.219.110:9092`
+- `.env`에 `KAFKA_BROKER` 설정 완료
+- `.env`에 `DATABASE_URL` 설정 완료
 
-### WSL에서 Kafka 시작
+### Kafka 브로커 설정
+
+`.env`에 아래 항목이 설정되어 있어야 합니다:
+
+```
+KAFKA_BROKER=192.168.219.110:9092
+```
+
+### 연결 테스트
 
 ```bash
-# Zookeeper 먼저 시작
-$KAFKA_HOME/bin/zookeeper-server-start.sh $KAFKA_HOME/config/zookeeper.properties &
-
-# Kafka Broker 시작
-$KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server.properties &
-```
-
-브로커가 `localhost:9092`가 아닌 경우 `.env.local`에 추가:
-
-```
-KAFKA_BROKER=<호스트>:<포트>
+node -e "
+const { Kafka, logLevel } = require('./node_modules/kafkajs');
+const kafka = new Kafka({ clientId: 'test', brokers: [process.env.KAFKA_BROKER ?? 'localhost:9092'], logLevel: logLevel.ERROR });
+const admin = kafka.admin();
+admin.connect().then(() => admin.listTopics()).then(t => { console.log('✅ 연결 성공, 토픽 수:', t.length); return admin.disconnect(); }).catch(e => console.error('❌', e.message));
+" 2>/dev/null
 ```
 
 ---
 
 ## 실행 순서
 
-터미널을 4개 열고 각각 실행합니다.
+터미널을 3개 열고 각각 실행합니다. (Kafka 브로커는 외부 서버에서 이미 실행 중)
 
 ### 터미널 1 — 공동망 Gateway
 
@@ -104,7 +108,7 @@ npm run kafka:settlement
 - 공동망 수신 확인 ACK 로그
 - 최종 정산 결과 수신 → DB 업데이트 + 알림 생성 → 정산 수신 ACK 발신
 
-### 터미널 4 — FIN-Mate 앱
+### 터미널 3 — FIN-Mate 앱
 
 ```bash
 npm run dev
