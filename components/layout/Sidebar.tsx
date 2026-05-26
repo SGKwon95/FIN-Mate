@@ -18,6 +18,7 @@ import {
   Percent,
   RefreshCw,
   Calculator,
+  BotMessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +76,7 @@ const NAV_ITEMS: NavItem[] = [
       { href: "/products/loan",    icon: Banknote,  label: "대출" },
     ],
   },
+  { href: "/chat",     icon: BotMessageSquare, label: "AI 상담" },
   { href: "/settings", icon: Settings, label: "설정" },
 ];
 
