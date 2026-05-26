@@ -28,6 +28,13 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   background-color: var(--color-kb-gray-light);
   color: var(--color-kb-navy);

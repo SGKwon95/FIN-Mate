@@ -7,15 +7,12 @@ import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
 
 const MODELS = [
-  { id: 'llama3',     label: 'Llama 3' },
-  { id: 'gemma2',     label: 'Gemma 2' },
-  { id: 'mistral',    label: 'Mistral' },
-  { id: 'qwen2.5',   label: 'Qwen 2.5' },
-  { id: 'phi4',       label: 'Phi-4' },
+  { id: 'qwen2.5-14b-instruct', label: 'Qwen 2.5 14B' },
+  { id: 'google/gemma-4-e4b',   label: 'Gemma 4' },
 ]
 
 export default function ChatInterface() {
-  const [modelId, setModelId] = useState('llama3')
+  const [modelId, setModelId] = useState('qwen2.5-14b-instruct')
   const [retrievedContext, setRetrievedContext] = useState('')
   const [fileName, setFileName] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -25,6 +22,7 @@ export default function ChatInterface() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
     api: '/api/chat',
     body: { modelId, retrievedContext },
+    streamProtocol: 'text',
   })
 
   useEffect(() => {
@@ -119,7 +117,7 @@ export default function ChatInterface() {
       </div>
 
       {/* ── 채팅 영역 ─────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
+      <div className="flex-1 overflow-y-auto scrollbar-none px-4 py-5 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center gap-4 py-16">
             <div className="w-16 h-16 rounded-2xl bg-kb-navy flex items-center justify-center shadow-card">
@@ -249,7 +247,7 @@ export default function ChatInterface() {
             onKeyDown={onKeyDown}
             placeholder="질문을 입력하세요… (Shift+Enter로 줄바꿈)"
             rows={1}
-            className="flex-1 resize-none rounded-xl border border-kb-gray-border bg-kb-gray-light px-4 py-2.5 text-sm text-kb-navy placeholder:text-kb-gray focus:outline-none focus:ring-2 focus:ring-kb-yellow focus:border-transparent transition-shadow max-h-32"
+            className="flex-1 resize-none rounded-xl border border-kb-gray-border bg-kb-gray-light px-4 py-2.5 text-sm text-kb-navy placeholder:text-kb-gray focus:outline-none focus:ring-2 focus:ring-kb-yellow focus:border-transparent transition-shadow max-h-32 scrollbar-none"
           />
           <button
             type="submit"

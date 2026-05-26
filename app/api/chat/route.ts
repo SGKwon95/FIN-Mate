@@ -1,11 +1,12 @@
 import { streamText } from 'ai'
-import { createOllama } from 'ollama-ai-provider'
+import { createOpenAI } from '@ai-sdk/openai'
 
 export async function POST(req: Request) {
   const { messages, modelId, retrievedContext } = await req.json()
 
-  const ollama = createOllama({
-    baseURL: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434/api',
+  const lmstudio = createOpenAI({
+    baseURL: `${process.env.OLLAMA_BASE_URL ?? 'http://localhost:1234'}/v1`,
+    apiKey: 'lm-studio',
   })
 
   const systemPrompt = `# 역할 및 목적
@@ -31,11 +32,11 @@ ${retrievedContext?.trim() || '업로드된 문서가 없습니다. 문서를 �
 </Reference_Document>`
 
   const result = streamText({
-    model: ollama(modelId ?? 'llama3'),
+    model: lmstudio(modelId ?? 'local-model'),
     system: systemPrompt,
     messages,
     temperature: 0.1,
   })
 
-  return result.toDataStreamResponse()
+  return result.toTextStreamResponse()
 }
