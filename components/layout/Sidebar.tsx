@@ -123,9 +123,7 @@ export default function Sidebar() {
                 {isOpen && (
                   <div className="mt-1 ml-3 pl-3 border-l-2 border-kb-gray-border space-y-0.5">
                     {item.children.map((child) => {
-                      const isActive =
-                        pathname === child.href ||
-                        pathname.startsWith(child.href);
+                      const isActive = pathname === child.href;
                       return (
                         <Link
                           key={child.href}
