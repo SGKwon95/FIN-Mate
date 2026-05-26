@@ -1,0 +1,162 @@
+import { NextRequest, NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
+
+const ML_SERVER_URL = process.env.ML_SERVER_URL ?? "http://localhost:8001"
+
+export async function POST(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session?.user?.partyId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { id } = await params
+
+  const application = await prisma.loanApplication.findUnique({
+    where: { applicationId: id, partyId: session.user.partyId },
+    include: {
+      product: {
+        include: {
+          productRates: {
+            where: { rateType: "BASE" },
+            orderBy: { effectiveFrom: "desc" },
+            take: 1,
+          },
+        },
+      },
+      party: {
+        include: {
+          individual: true,
+          accounts: {
+            where: { accountStatus: "ACTIVE" },
+            include: { transactions: false },
+          },
+          contracts: {
+            include: { loanApplications: false, delinquencies: true },
+          },
+        },
+      },
+    },
+  })
+
+  if (!application) {
+    return NextResponse.json({ error: "신청 건을 찾을 수 없습니다" }, { status: 404 })
+  }
+
+  const individual = application.party.individual
+  const accounts = application.party.accounts
+
+  // ── DB에서 자동 추출 가능한 피처 ──────────────────────────────────────────────
+
+  // emp_length: 고용 시작일 기반 경력 연수
+  let empLength = 0
+  if (individual?.employmentStartDate) {
+    const startStr = individual.employmentStartDate // "YYYYMMDD"
+    const startYear = parseInt(startStr.slice(0, 4))
+    const startMonth = parseInt(startStr.slice(4, 6))
+    const now = new Date()
+    empLength = Math.max(0, (now.getFullYear() - startYear) * 12 + (now.getMonth() + 1 - startMonth)) / 12
+  }
+
+  // open_acc / total_acc: ACTIVE 계좌 수 / 전체 계좌 수
+  const openAcc = accounts.filter(a => a.accountStatus === "ACTIVE").length
+  const totalAcc = await prisma.account.count({ where: { partyId: application.partyId } })
+
+  // delinq_2yrs: 최근 2년 연체 건수
+  const twoYearsAgo = new Date()
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
+  const delinqContracts = application.party.contracts.flatMap(c => c.delinquencies)
+  const delinq2yrs = delinqContracts.filter(d => new Date(d.startedAt) >= twoYearsAgo).length
+
+  // revol_util: 마이너스통장 한도 대비 사용 비율 (%)
+  let revolUtil = 0
+  const creditAccounts = accounts.filter(a => a.creditLimit && Number(a.creditLimit) > 0)
+  if (creditAccounts.length > 0) {
+    const totalLimit = creditAccounts.reduce((s, a) => s + Number(a.creditLimit ?? 0), 0)
+    const totalUsed = creditAccounts.reduce((s, a) => s + Math.max(0, -Number(a.balance)), 0)
+    revolUtil = totalLimit > 0 ? (totalUsed / totalLimit) * 100 : 0
+  }
+
+  // int_rate: 상품 기준 금리 (소수)
+  const baseRate = Number(application.product.productRates[0]?.rate ?? 0)
+
+  // annual_inc
+  const annualInc = Number(individual?.annualIncome ?? 0)
+
+  // ── ML 서버 호출 ──────────────────────────────────────────────────────────────
+  const purposeMap: Record<string, string> = {
+    "주택구입": "home",
+    "생활자금": "other",
+    "사업자금": "small_business",
+    "의료비": "medical",
+    "교육비": "educational",
+    "차량구입": "car",
+    "채무상환": "debt_consolidation",
+    "기타": "other",
+  }
+  const purpose = purposeMap[application.loanPurpose ?? "기타"] ?? "other"
+
+  const payload = {
+    loan_amnt: Number(application.requestedAmount),
+    term: application.requestedPeriodMonths ?? 36,
+    int_rate: baseRate,
+    annual_inc: annualInc,
+    emp_length: Math.min(empLength, 10),
+    open_acc: openAcc,
+    total_acc: totalAcc,
+    delinq_2yrs: delinq2yrs,
+    revol_util: revolUtil,
+    fico_score: application.mlCreditScore ?? 650,
+    home_ownership: application.mlHomeOwnership ?? "RENT",
+    dti: Number(application.mlDti ?? 20),
+    inq_last_6mths: application.mlInqLast6Mths ?? 0,
+    pub_rec: application.mlPubRec ?? 0,
+    purpose,
+  }
+
+  let mlResult: { decision: string; default_prob: number; score: number; threshold: number }
+  try {
+    const res = await fetch(`${ML_SERVER_URL}/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`ML 서버 오류: ${text}`)
+    }
+    mlResult = await res.json()
+  } catch (err) {
+    return NextResponse.json(
+      { error: `ML 추론 서버 연결 실패: ${(err as Error).message}` },
+      { status: 502 }
+    )
+  }
+
+  // ── 결과 DB 저장 ──────────────────────────────────────────────────────────────
+  const updated = await prisma.loanApplication.update({
+    where: { applicationId: id },
+    data: {
+      mlScore: mlResult.score,
+      mlDecision: mlResult.decision,
+      mlDefaultProb: mlResult.default_prob,
+      mlScreenedAt: new Date(),
+      applicationStatus: mlResult.decision === "승인" ? "APPROVED" : "REJECTED",
+      decidedAt: new Date(),
+    },
+    select: {
+      applicationId: true,
+      mlScore: true,
+      mlDecision: true,
+      mlDefaultProb: true,
+      mlScreenedAt: true,
+      applicationStatus: true,
+    },
+  })
+
+  return NextResponse.json(updated)
+}

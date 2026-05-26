@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ChevronRight, Shield, Home, PiggyBank, Clock, AlertCircle, CheckCircle } from "lucide-react"
+import { ChevronRight, Shield, CheckCircle } from "lucide-react"
 import { formatKRW } from "@/lib/formatters"
 import type { Metadata } from "next"
 
@@ -231,10 +231,12 @@ export default async function ProductDetailPage({
           가입하기 <ChevronRight className="w-5 h-5" />
         </Link>
       ) : isLoan ? (
-        <div className="flex items-center gap-2 justify-center w-full py-4 bg-kb-gray-border rounded-2xl text-kb-gray text-sm">
-          <AlertCircle className="w-4 h-4" />
-          영업점 또는 앱에서 신청 가능합니다
-        </div>
+        <Link
+          href={`/products/${productId}/loan-apply`}
+          className="flex items-center justify-center gap-2 w-full py-4 bg-blue-600 text-white font-bold rounded-2xl text-base active:scale-[0.98] transition-transform"
+        >
+          대출 신청하기 <ChevronRight className="w-5 h-5" />
+        </Link>
       ) : null}
     </div>
   )

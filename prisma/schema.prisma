@@ -825,6 +825,17 @@ model LoanApplication {
   consultationMemo      String?   @map("consultation_memo") @db.Text
   submittedAt           DateTime? @map("submitted_at") @db.Timestamptz()
   decidedAt             DateTime? @map("decided_at") @db.Timestamptz()
+  // ML 심사 입력 피처 (사용자 직접 입력)
+  mlCreditScore         Int?      @map("ml_credit_score")
+  mlHomeOwnership       String?   @map("ml_home_ownership") @db.VarChar(20)
+  mlDti                 Decimal?  @map("ml_dti") @db.Decimal(7, 2)
+  mlInqLast6Mths        Int?      @map("ml_inq_last_6mths")
+  mlPubRec              Int?      @map("ml_pub_rec")
+  // ML 심사 결과
+  mlScore               Int?      @map("ml_score")
+  mlDecision            String?   @map("ml_decision") @db.VarChar(10)
+  mlDefaultProb         Decimal?  @map("ml_default_prob") @db.Decimal(7, 4)
+  mlScreenedAt          DateTime? @map("ml_screened_at") @db.Timestamptz()
   createdBy             String?   @map("created_by") @db.Uuid
   updatedBy             String?   @map("updated_by") @db.Uuid
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz()
