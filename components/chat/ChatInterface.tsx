@@ -2,6 +2,7 @@
 
 import { useChat } from '@ai-sdk/react'
 import { useRef, useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { Send, Bot, User, Paperclip, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
@@ -12,6 +13,9 @@ const MODELS = [
 ]
 
 export default function ChatInterface() {
+  const { data: session } = useSession()
+  const isAdmin = session?.user?.isEmployee === true
+
   const [modelId, setModelId] = useState('qwen2.5-14b-instruct')
   const [retrievedContext, setRetrievedContext] = useState('')
   const [fileName, setFileName] = useState('')
@@ -85,34 +89,38 @@ export default function ChatInterface() {
           </select>
         </div>
 
-        {/* 문서 업로드 */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".txt,.md,.csv"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-        {fileName ? (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-kb-yellow-light border border-kb-yellow text-kb-navy text-xs font-medium max-w-[160px]">
-            <Paperclip className="w-3.5 h-3.5 shrink-0 text-kb-navy" />
-            <span className="truncate">{fileName}</span>
-            <button
-              onClick={clearDocument}
-              className="shrink-0 ml-0.5 hover:text-kb-red transition-colors"
-              aria-label="문서 제거"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-kb-gray-border bg-kb-gray-light text-xs text-kb-gray hover:bg-kb-yellow-light hover:text-kb-navy hover:border-kb-yellow transition-colors font-medium"
-          >
-            <Paperclip className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">문서 업로드</span>
-          </button>
+        {/* 문서 업로드 — 직원(관리자)만 표시 */}
+        {isAdmin && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".txt,.md,.csv"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            {fileName ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-kb-yellow-light border border-kb-yellow text-kb-navy text-xs font-medium max-w-[160px]">
+                <Paperclip className="w-3.5 h-3.5 shrink-0 text-kb-navy" />
+                <span className="truncate">{fileName}</span>
+                <button
+                  onClick={clearDocument}
+                  className="shrink-0 ml-0.5 hover:text-kb-red transition-colors"
+                  aria-label="문서 제거"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-kb-gray-border bg-kb-gray-light text-xs text-kb-gray hover:bg-kb-yellow-light hover:text-kb-navy hover:border-kb-yellow transition-colors font-medium"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">문서 업로드</span>
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -130,7 +138,7 @@ export default function ChatInterface() {
                 <br />문서 내용만을 기반으로 정확하게 답변해 드립니다.
               </p>
             </div>
-            {!fileName && (
+            {isAdmin && !fileName && (
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-kb-navy text-white text-sm font-medium hover:bg-kb-navy-light transition-colors shadow-card"
@@ -234,7 +242,7 @@ export default function ChatInterface() {
 
       {/* ── 하단 입력바 ───────────────────────────────── */}
       <div className="bg-white border-t border-kb-gray-border px-4 py-3 shrink-0">
-        {!fileName && messages.length > 0 && (
+        {isAdmin && !fileName && messages.length > 0 && (
           <p className="text-xs text-kb-gray text-center mb-2">
             업무 문서를 업로드하면 더 정확한 답변을 받을 수 있어요.
           </p>

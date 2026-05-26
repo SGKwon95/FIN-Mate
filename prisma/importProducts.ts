@@ -112,8 +112,9 @@ async function importCsv(csvFile: string, transactionType: "TIME_DEPOSIT" | "SAV
     if (!launchDate) { console.warn(`날짜 파싱 실패, 건너뜀: ${row.fin_prdt_nm}`); continue }
 
     const expiryDate = parseExpiryDate(row.dcls_end_day)
-    const maxAmount = row.max_limit ? Number(row.max_limit) : null
     const minAmount = parseMinAmount(row.etc_note || "")
+    const rawMax = row.max_limit ? Number(row.max_limit) : null
+    const maxAmount = rawMax !== null && minAmount !== null && rawMax < minAmount ? null : rawMax
     const [minPeriod, maxPeriod] = parsePeriod(row.etc_note || "")
     const description = [
       row.join_way ? `가입방법: ${row.join_way}` : "",
