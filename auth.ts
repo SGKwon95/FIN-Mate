@@ -17,7 +17,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const partyAuth = await prisma.partyAuth.findUnique({
           where: { loginId: credentials.loginId as string },
-          include: { party: { select: { partyName: true } } },
+          include: {
+            party: {
+              select: { partyName: true, employee: { select: { employeeId: true } } },
+            },
+          },
         })
 
         if (!partyAuth || partyAuth.partyAuthStatus !== "ACTIVE") return null
@@ -43,6 +47,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: partyAuth.partyId,
           name: partyAuth.party.partyName,
           partyId: partyAuth.partyId,
+          isEmployee: partyAuth.party.employee !== null,
         }
       },
     }),

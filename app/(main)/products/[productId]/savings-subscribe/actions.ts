@@ -4,7 +4,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { createNotification } from "@/lib/notifications"
-import { toKSTDateStr } from "@/lib/formatters"
+import { toKSTDateCode } from "@/lib/formatters"
 
 export type SavingsSubscribeResult =
   | { ok: true; contractId: string; accountNumber: string }
@@ -80,10 +80,10 @@ export async function subscribeSavings(input: {
   }
 
   const now = new Date()
-  const today = toKSTDateStr(now)
+  const today = toKSTDateCode(now)
   const maturity = new Date(now)
   maturity.setMonth(maturity.getMonth() + periodMonths)
-  const maturityDate = toKSTDateStr(maturity)
+  const maturityDate = toKSTDateCode(maturity)
   const newAccountNumber = `00941${Date.now().toString().slice(-7)}`
 
   const result = await prisma.$transaction(async (tx) => {
@@ -124,7 +124,7 @@ export async function subscribeSavings(input: {
       data: { balance: balanceAfter, lastTransactionAt: now },
     })
 
-    const txDate = today.replace(/-/g, "")
+    const txDate = today
     const txNo = `SV${Date.now()}`
 
     await tx.transaction.create({
