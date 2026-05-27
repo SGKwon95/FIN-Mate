@@ -7,6 +7,7 @@ volumes:
   loki_data:
   tempo_data:
   grafana_data:
+  phoenix_data:
 
 services:
   grafana:
@@ -65,6 +66,19 @@ services:
       - tempo_data:/var/tempo
       - ./tempo/tempo-config.yaml:/etc/tempo/config.yaml:ro
     command: -config.file=/etc/tempo/config.yaml
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: fin-mate-phoenix
+    ports:
+      - "6006:6006"
+    networks: [observability]
+    volumes:
+      - phoenix_data:/mnt/data/phoenix
+    environment:
+      - PHOENIX_WORKING_DIR=/mnt/data/phoenix
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   promtail:
     image: grafana/promtail:3.0.0

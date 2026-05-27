@@ -4,6 +4,17 @@
 """
 
 import os
+
+# Phoenix OTel must be registered before FastAPI app is created
+from phoenix.otel import register as _phoenix_register
+_phoenix_register(
+    project_name="fin-mate-ml",
+    endpoint=os.getenv("PHOENIX_ENDPOINT", "http://localhost:6006"),
+)
+from opentelemetry import trace as _otel_trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from openinference.semconv.trace import SpanAttributes
+
 from pathlib import Path
 
 import joblib
@@ -15,6 +26,9 @@ from pydantic import BaseModel
 MODEL_PATH = os.getenv("LOAN_MODEL_PATH", "loan_model.pkl")
 
 app = FastAPI(title="FIN-Mate 대출심사 ML API")
+FastAPIInstrumentor.instrument_app(app)
+
+_tracer = _otel_trace.get_tracer(__name__)
 
 # 서버 시작 시 모델 로드
 _artifact: dict | None = None
@@ -106,29 +120,46 @@ def health():
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(data: ApplicantInput):
-    try:
-        artifact = get_artifact()
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    with _tracer.start_as_current_span("ml.loan_predict") as span:
+        span.set_attribute(SpanAttributes.INPUT_VALUE, data.model_dump_json())
+        span.set_attribute("loan.amount", data.loan_amnt)
+        span.set_attribute("loan.term_months", data.term)
+        span.set_attribute("loan.purpose", data.purpose)
+        span.set_attribute("loan.home_ownership", data.home_ownership)
+        span.set_attribute("loan.annual_inc", data.annual_inc)
+        span.set_attribute("loan.fico_score", data.fico_score)
 
-    model = artifact["model"]
-    threshold: float = artifact["threshold"]
-    features: list[str] = artifact["features"]
+        try:
+            artifact = get_artifact()
+        except RuntimeError as e:
+            span.set_attribute("error", True)
+            span.set_attribute("error.message", str(e))
+            raise HTTPException(status_code=503, detail=str(e))
 
-    df = preprocess_input(data, artifact)
+        model = artifact["model"]
+        threshold: float = artifact["threshold"]
+        features: list[str] = artifact["features"]
 
-    # 모델이 기대하는 피처 순서로 정렬, 없는 컬럼은 0으로 채움
-    for col in features:
-        if col not in df.columns:
-            df[col] = 0
-    df = df[features]
+        df = preprocess_input(data, artifact)
 
-    prob: float = float(model.predict_proba(df)[0][1])
-    score = int(1000 - prob * 1000)
+        for col in features:
+            if col not in df.columns:
+                df[col] = 0
+        df = df[features]
 
-    return PredictionResponse(
-        decision="거절" if prob >= threshold else "승인",
-        default_prob=round(prob, 4),
-        score=score,
-        threshold=round(threshold, 4),
-    )
+        prob: float = float(model.predict_proba(df)[0][1])
+        score = int(1000 - prob * 1000)
+        decision = "거절" if prob >= threshold else "승인"
+
+        span.set_attribute("ml.decision", decision)
+        span.set_attribute("ml.default_prob", round(prob, 4))
+        span.set_attribute("ml.score", score)
+        span.set_attribute("ml.threshold", round(threshold, 4))
+        span.set_attribute(SpanAttributes.OUTPUT_VALUE, f"decision={decision} prob={round(prob,4)} score={score}")
+
+        return PredictionResponse(
+            decision=decision,
+            default_prob=round(prob, 4),
+            score=score,
+            threshold=round(threshold, 4),
+        )
