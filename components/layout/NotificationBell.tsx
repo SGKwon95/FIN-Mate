@@ -5,13 +5,13 @@ import { Bell } from "lucide-react"
 import { formatDate } from "@/lib/formatters"
 
 type Notification = {
-  notificationId: string
-  type: string
-  title: string
-  body: string
-  isRead: boolean
-  linkedEntityId: string | null
-  createdAt: string
+  notificationId:    string
+  notificationType:  string
+  notificationTitle: string
+  notificationBody:  string
+  isRead:            boolean
+  linkedEntityId:    string | null
+  createdAt:         string
 }
 
 const TYPE_ICON: Record<string, string> = {
@@ -106,13 +106,13 @@ export default function NotificationBell({ initialUnreadCount }: { initialUnread
                   className={`px-4 py-3 flex gap-3 items-start ${n.isRead ? "bg-white" : "bg-blue-50/40"}`}
                 >
                   <span
-                    className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${TYPE_COLOR[n.type] ?? "bg-gray-100 text-gray-600"}`}
+                    className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${TYPE_COLOR[n.notificationType] ?? "bg-gray-100 text-gray-600"}`}
                   >
-                    {TYPE_ICON[n.type] ?? "·"}
+                    {TYPE_ICON[n.notificationType] ?? "·"}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-kb-navy truncate">{n.title}</p>
-                    <p className="text-xs text-kb-gray mt-0.5 break-words">{n.body}</p>
+                    <p className="text-xs font-semibold text-kb-navy truncate">{n.notificationTitle}</p>
+                    <p className="text-xs text-kb-gray mt-0.5 break-words">{n.notificationBody}</p>
                     <p className="text-[10px] text-kb-gray/60 mt-1">
                       {formatDate(n.createdAt)}
                     </p>

@@ -64,7 +64,7 @@ function parseDate(s: string): Date | null {
 function parseExpiryDate(s: string): string | null {
   if (!s || s.length < 8) return null
   if (s === "99991231") return null // 무기한은 null 처리
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
+  return s.slice(0, 8)
 }
 
 /** etc_note에서 최소 가입금액(원) 추출 */
@@ -192,7 +192,7 @@ async function importCsv(csvFile: string, transactionType: "TIME_DEPOSIT" | "SAV
 }
 
 async function main() {
-  await importCsv("savings_products.csv", "SAVINGS")
+  await importCsv("data/product/savings_products.csv", "SAVINGS")
   await pool.end()
 }
 

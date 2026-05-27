@@ -13,16 +13,21 @@ const ADMIN_UUID = "00000000-0000-0000-0000-000000000001";
 async function main() {
   console.log("🌱 DB 시딩 시작...");
 
-  // ── 기존 데이터 초기화 (역참조 순서) ──────────────────
-  await prisma.notification.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.account.deleteMany();
-  await prisma.partyAuth.deleteMany();
-  await prisma.individual.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.commonCode.deleteMany();
-  await prisma.commonCodeGroup.deleteMany();
-  await prisma.party.deleteMany();
+  // ── 기존 데이터 초기화 ──────────────────────────────────
+  await prisma.$executeRawUnsafe(
+    `TRUNCATE TABLE
+      notification, transaction, scheduled_transfer_execution,
+      scheduled_transfer, kftc_receipt, transfer_instruction,
+      account, party_auth, individual, corporate,
+      loan_delinquency, loan_collateral, loan_approval_step,
+      loan_application, contract_rate_benefit, contract_terms_agreement,
+      contract, savings_payment, deposit_detail, loan_detail,
+      product_fee, product_rate_benefit, product_rate_tier,
+      product_rate, product_terms, product,
+      document, employee, branch,
+      common_code, common_code_group, party
+    CASCADE`
+  );
 
   // ── 1. 공통 코드 ──────────────────────────────────────
   await prisma.commonCodeGroup.createMany({
@@ -1540,7 +1545,7 @@ async function main() {
       accountStatus: "ACTIVE",
       balance: 2_500_000,
       accountPurpose: "GENERAL",
-      openedDate: "2022-03-15",
+      openedDate: "20220315",
       displayOrder: 0,
     },
   });
@@ -1554,7 +1559,7 @@ async function main() {
       accountStatus: "ACTIVE",
       balance: 890_000,
       accountPurpose: "SALARY",
-      openedDate: "2021-07-01",
+      openedDate: "20210701",
       displayOrder: 1,
     },
   });
@@ -1568,7 +1573,7 @@ async function main() {
       accountStatus: "ACTIVE",
       balance: 1_200_000,
       accountPurpose: "SAVINGS",
-      openedDate: "2023-01-10",
+      openedDate: "20230110",
       displayOrder: 2,
     },
   });
@@ -1680,7 +1685,7 @@ async function main() {
         channel: tx.ch as never,
         counterpartName: tx.name,
         remark: tx.remark,
-        transactionDate: tx.date,
+        transactionDate: tx.date.replace(/-/g, ""),
         transactedAt: new Date(tx.date),
       },
     });

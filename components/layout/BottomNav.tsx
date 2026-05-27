@@ -2,15 +2,16 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, ArrowLeftRight, TrendingUp, Settings, Search } from "lucide-react"
+import { Home, ArrowLeftRight, TrendingUp, Settings, Search, BotMessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAV_ITEMS = [
   { href: "/dashboard",        icon: Home,           label: "홈",  match: "/dashboard" },
-  { href: "/accounts",         icon: Search,         label: "조회", match: ["/accounts", "/transactions"] },
-  { href: "/transfer",         icon: ArrowLeftRight, label: "이체", match: "/transfer" },
-  { href: "/products/deposit", icon: TrendingUp,     label: "상품", match: "/products" },
-  { href: "/settings",         icon: Settings,       label: "설정", match: "/settings" },
+  { href: "/accounts",         icon: Search,         label: "조회", match: ["/accounts", "/transactions", "/rates"] },
+  { href: "/transfer",         icon: ArrowLeftRight, label: "이체", match: ["/transfer", "/auto-transfer"] },
+  { href: "/products/deposit", icon: TrendingUp,        label: "상품",  match: "/products" },
+  { href: "/chat",             icon: BotMessageSquare,  label: "AI상담", match: "/chat" },
+  { href: "/settings",         icon: Settings,          label: "설정",  match: "/settings" },
 ]
 
 export default function BottomNav() {

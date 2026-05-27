@@ -15,6 +15,10 @@ import {
   PiggyBank,
   Banknote,
   TrendingUp,
+  Percent,
+  RefreshCw,
+  Calculator,
+  BotMessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,11 +45,27 @@ const NAV_ITEMS: NavItem[] = [
     label: "조회",
     icon: Search,
     children: [
-      { href: "/accounts", icon: CreditCard, label: "내 계좌" },
-      { href: "/transactions", icon: History, label: "거래내역" },
+      { href: "/accounts",     icon: CreditCard, label: "내 계좌" },
+      { href: "/transactions", icon: History,    label: "거래내역" },
     ],
   },
-  { href: "/transfer", icon: ArrowLeftRight, label: "이체" },
+  {
+    label: "금리",
+    icon: Percent,
+    basePath: "/rates",
+    children: [
+      { href: "/rates",          icon: Percent,     label: "적용금리" },
+      { href: "/rates/estimate", icon: Calculator,  label: "예상금리" },
+    ],
+  },
+  {
+    label: "이체",
+    icon: ArrowLeftRight,
+    children: [
+      { href: "/transfer",      icon: ArrowLeftRight, label: "즉시이체" },
+      { href: "/auto-transfer", icon: RefreshCw,      label: "자동이체" },
+    ],
+  },
   {
     label: "상품",
     icon: TrendingUp,
@@ -56,6 +76,7 @@ const NAV_ITEMS: NavItem[] = [
       { href: "/products/loan",    icon: Banknote,  label: "대출" },
     ],
   },
+  { href: "/chat",     icon: BotMessageSquare, label: "AI 상담" },
   { href: "/settings", icon: Settings, label: "설정" },
 ];
 
@@ -104,9 +125,7 @@ export default function Sidebar() {
                 {isOpen && (
                   <div className="mt-1 ml-3 pl-3 border-l-2 border-kb-gray-border space-y-0.5">
                     {item.children.map((child) => {
-                      const isActive =
-                        pathname === child.href ||
-                        pathname.startsWith(child.href);
+                      const isActive = pathname === child.href;
                       return (
                         <Link
                           key={child.href}

@@ -60,7 +60,7 @@ function parseDate(s: string): Date | null {
 function parseExpiryDate(s: string): string | null {
   if (!s || s.length < 8) return null
   if (s === "99991231") return null
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
+  return s.slice(0, 8)
 }
 
 /** loan_lmt에서 LTV 비율 추출 (예: "LTV 70%" → 0.70) */

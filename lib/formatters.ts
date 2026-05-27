@@ -17,12 +17,23 @@ export function formatAccountNumber(num: string): string {
   return num
 }
 
+/** KST 기준 날짜 문자열 반환 (YYYYMMDD) — DB의 VarChar(8) 날짜 컬럼용 */
+export function toKSTDateCode(date: Date): string {
+  return date.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }).replace(/-/g, "")
+}
+
+/** KST 기준 날짜 문자열 반환 (YYYY-MM-DD) — 계약/만기일 문자열 컬럼용 */
+export function toKSTDateStr(date: Date): string {
+  return date.toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" })
+}
+
 /** 날짜 → 2026. 05. 18. */
 export function formatDate(date: string | Date): string {
   return new Date(date).toLocaleDateString("ko-KR", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    timeZone: "Asia/Seoul",
   })
 }
 

@@ -1,0 +1,94 @@
+networks:
+  observability:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  grafana_data:
+  phoenix_data:
+
+services:
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: fin-mate-grafana
+    ports:
+      - "3001:3000"
+    networks: [observability]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+    depends_on: [prometheus, loki, tempo]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: fin-mate-prometheus
+    ports:
+      - "9090:9090"
+    networks: [observability]
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-remote-write-receiver'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: fin-mate-loki
+    ports:
+      - "3100:3100"
+    networks: [observability]
+    volumes:
+      - loki_data:/loki
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    command: -config.file=/etc/loki/local-config.yaml
+
+  tempo:
+    image: grafana/tempo:2.4.0
+    container_name: fin-mate-tempo
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "3200:3200"
+    networks: [observability]
+    volumes:
+      - tempo_data:/var/tempo
+      - ./tempo/tempo-config.yaml:/etc/tempo/config.yaml:ro
+    command: -config.file=/etc/tempo/config.yaml
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: fin-mate-phoenix
+    ports:
+      - "6006:6006"
+    networks: [observability]
+    volumes:
+      - phoenix_data:/mnt/data/phoenix
+    environment:
+      - PHOENIX_WORKING_DIR=/mnt/data/phoenix
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: fin-mate-promtail
+    ports:
+      - "9080:9080"
+    networks: [observability]
+    volumes:
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/log/fin-mate:/var/log/fin-mate:ro
+    command: -config.file=/etc/promtail/config.yaml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
