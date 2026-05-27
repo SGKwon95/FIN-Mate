@@ -194,6 +194,7 @@ async function importCsv(csvFile: string, transactionType: "TIME_DEPOSIT" | "SAV
 
 async function main() {
   await importCsv("data/product/savings_products.csv", "SAVINGS")
+  await importCsv("data/product/deposit_products.csv", "TIME_DEPOSIT")
   await pool.end()
 }
 
