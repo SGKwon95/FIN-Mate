@@ -6,6 +6,7 @@ import { redirect } from "next/navigation"
 import { createNotification } from "@/lib/notifications"
 import { getProducer, TOPICS } from "@/lib/kafka"
 import { toKSTDateCode } from "@/lib/formatters"
+import { injectTraceContext } from "@/lib/kafka-otel"
 
 const OWN_BANK_CODE = "004"
 
@@ -173,6 +174,7 @@ export async function executeTransfer(input: {
             memo:             memo ?? null,
             requestedAt:      now.toISOString(),
           }),
+          headers: injectTraceContext(),
         }],
       })
     } catch (e) {

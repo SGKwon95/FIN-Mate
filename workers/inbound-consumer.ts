@@ -6,9 +6,14 @@
  *   FIN-Mate → [INBOUND_RESULTS] → Gateway (처리 결과)
  * 실행: npm run kafka:inbound
  */
+import './otel-init'
 import { kafka, TOPICS } from '@/lib/kafka'
 import { prisma } from '@/lib/prisma'
 import { toKSTDateCode } from '@/lib/formatters'
+import { createWorkerLogger } from '@/lib/logger'
+import { runWithKafkaSpan } from '@/lib/kafka-otel'
+
+const log = createWorkerLogger('inbound-consumer')
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
 const OWN_BANK_CODE = '004'
@@ -48,19 +53,22 @@ async function main() {
   await consumer.connect()
   await consumer.subscribe({ topics: [TOPICS.INBOUND_REQUESTS], fromBeginning: false })
 
-  console.log('[FIN-Mate 인바운드] 타행 입금 수신 대기 중...')
-  console.log('  구독:', TOPICS.INBOUND_REQUESTS)
+  log.info({ event: 'worker_started', topics: [TOPICS.INBOUND_REQUESTS] }, '타행 입금 수신 대기 중')
 
   await consumer.run({
     eachMessage: async ({ message }) => {
       if (!message.value) return
-      const req = JSON.parse(message.value.toString()) as InboundRequest
+      return runWithKafkaSpan(TOPICS.INBOUND_REQUESTS, message.headers, async () => {
+      const req = JSON.parse(message.value!.toString()) as InboundRequest
 
-      console.log(
-        `[FIN-Mate 인바운드] ▶ 입금 요청: ${req.transactionNo}`,
-        `| ${req.fromBankCode}:${req.fromAccountNumber} → ${req.toAccountNumber}`,
-        `| ${req.amount.toLocaleString('ko-KR')}원`,
-      )
+      log.info({
+        event: 'inbound_request_received',
+        transactionNo: req.transactionNo,
+        fromBankCode: req.fromBankCode,
+        fromAccountNumber: req.fromAccountNumber,
+        toAccountNumber: req.toAccountNumber,
+        amount: req.amount,
+      }, '입금 요청')
 
       const now = new Date()
       let status:      'COMPLETED' | 'FAILED'
@@ -86,7 +94,7 @@ async function main() {
       if (!account || account.accountStatus !== 'ACTIVE' || account.isLocked) {
         status      = 'FAILED'
         failureCode = !account ? 'ACCOUNT_NOT_FOUND' : 'ACCOUNT_INACTIVE'
-        console.log(`[FIN-Mate 인바운드] ✗ 계좌 불가: ${req.toAccountNumber} (${failureCode})`)
+        log.warn({ event: 'account_unavailable', toAccountNumber: req.toAccountNumber, failureCode }, '계좌 불가')
       } else {
         const balanceBefore = Number(account.balance)
         const balanceAfter  = balanceBefore + req.amount
@@ -138,7 +146,7 @@ async function main() {
         })
 
         status = 'COMPLETED'
-        console.log(`[FIN-Mate 인바운드] ✔ 입금 완료: ${req.toAccountNumber} +${req.amount.toLocaleString('ko-KR')}원 (잔액: ${balanceAfter.toLocaleString('ko-KR')}원)`)
+        log.info({ event: 'inbound_completed', toAccountNumber: req.toAccountNumber, amount: req.amount, balanceAfter }, '입금 완료')
       }
 
       // 처리 결과를 Gateway로 발신
@@ -152,12 +160,13 @@ async function main() {
           settledAt:     now.toISOString(),
         }) }],
       })
-      console.log(`[FIN-Mate 인바운드] ✔ 처리 결과 발신: ${req.transactionNo} → ${status}`)
+      log.info({ event: 'inbound_result_sent', transactionNo: req.transactionNo, status }, '처리 결과 발신')
+      }) // end runWithKafkaSpan
     },
   })
 }
 
 main().catch((err) => {
-  console.error('[FIN-Mate 인바운드 Consumer] 오류:', err)
+  log.fatal({ err }, '인바운드 Consumer 치명적 오류')
   process.exit(1)
 })

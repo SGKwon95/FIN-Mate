@@ -8,9 +8,14 @@
  *   nextExecutionDate를 다음달로 갱신
  * 실행: npm run worker:scheduled
  */
+import './otel-init'
 import { kafka, TOPICS } from '@/lib/kafka'
 import { prisma } from '@/lib/prisma'
 import { toKSTDateCode } from '@/lib/formatters'
+import { createWorkerLogger } from '@/lib/logger'
+import { injectTraceContext } from '@/lib/kafka-otel'
+
+const log = createWorkerLogger('scheduled-transfer-worker')
 
 const OWN_BANK_CODE = '004'
 
@@ -45,7 +50,7 @@ async function processSchedules() {
 
   if (due.length === 0) return
 
-  console.log(`[자동이체 워커] ${todayStr} — 처리 대상: ${due.length}건`)
+  log.info({ event: 'processing_schedules', date: todayStr, count: due.length }, '처리 대상')
 
   for (const schedule of due) {
     const {
@@ -142,11 +147,11 @@ async function processSchedules() {
             amount:            amountNum,
             memo:              memo ?? null,
             requestedAt:       now.toISOString(),
-          }) }],
+          }), headers: injectTraceContext() }],
         })
 
         createdTxId = txResult.transactionId
-        console.log(`[자동이체 워커] ✔ 타행 이체 발행: ${scheduledTransferId} → ${txNo}`)
+        log.info({ event: 'interbank_transfer_published', scheduledTransferId, txNo }, '타행 이체 발행')
       } else {
         // ── 자행 이체: 동기 처리 ────────────────────────────
         const toAccount = await prisma.account.findUnique({
@@ -216,12 +221,12 @@ async function processSchedules() {
         })
 
         createdTxId = txResult.transactionId
-        console.log(`[자동이체 워커] ✔ 자행 이체 완료: ${scheduledTransferId}`)
+        log.info({ event: 'internal_transfer_completed', scheduledTransferId }, '자행 이체 완료')
       }
     } catch (err) {
       executionStatus = 'FAILED'
       failureReason   = err instanceof Error ? err.message : '알 수 없는 오류'
-      console.error(`[자동이체 워커] ✗ 실패: ${scheduledTransferId} — ${failureReason}`)
+      log.error({ event: 'schedule_failed', scheduledTransferId, reason: failureReason }, '자동이체 실패')
     }
 
     // 실행 이력 기록 + nextExecutionDate 갱신
@@ -261,6 +266,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[자동이체 워커] 오류:', err)
+  log.fatal({ err }, '자동이체 워커 치명적 오류')
   process.exit(1)
 })

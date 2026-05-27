@@ -6,8 +6,13 @@
  *   Step 9  A → [A_SETTLED_ACK]              → Gateway (정산 수신 확인)
  * 실행: npx tsx workers/settlement-consumer.ts
  */
+import './otel-init'
 import { kafka, TOPICS } from '@/lib/kafka'
 import { prisma } from '@/lib/prisma'
+import { createWorkerLogger } from '@/lib/logger'
+import { runWithKafkaSpan } from '@/lib/kafka-otel'
+
+const log = createWorkerLogger('settlement-consumer')
 
 const consumer = kafka.consumer({ groupId: 'fin-mate-settlement-group' })
 const producer  = kafka.producer()
@@ -32,17 +37,20 @@ async function main() {
     fromBeginning: false,
   })
 
-  console.log('[A 은행] 공동망 메세지 수신 대기 중...')
-  console.log('  구독:', TOPICS.GATEWAY_ACK, '|', TOPICS.TRANSFER_SETTLEMENTS)
+  log.info({
+    event: 'worker_started',
+    topics: [TOPICS.GATEWAY_ACK, TOPICS.TRANSFER_SETTLEMENTS],
+  }, 'A 은행 공동망 메시지 수신 대기 중')
 
   await consumer.run({
     eachMessage: async ({ topic, message }) => {
       if (!message.value) return
-      const body = JSON.parse(message.value.toString())
+      return runWithKafkaSpan(topic, message.headers, async () => {
+      const body = JSON.parse(message.value!.toString())
 
       // ── Step 2 수신: Gateway → A 수신 확인 ACK ───────────────
       if (topic === TOPICS.GATEWAY_ACK) {
-        console.log(`[A 은행] ✔ 공동망 수신 확인: ${body.transactionNo} (receivedAt: ${body.receivedAt})`)
+        log.info({ event: 'gateway_ack_received', transactionNo: body.transactionNo, receivedAt: body.receivedAt }, '공동망 수신 확인')
         return
       }
 
@@ -55,7 +63,7 @@ async function main() {
         settledAt:     string
       }
 
-      console.log(`[A 은행] ▶ 정산 결과 수신: ${msg.transactionNo} → ${msg.status}`)
+      log.info({ event: 'settlement_received', transactionNo: msg.transactionNo, status: msg.status }, '정산 결과 수신')
 
       const txn = await prisma.transaction.findUnique({
         where:  { transactionId: msg.transactionId },
@@ -69,7 +77,7 @@ async function main() {
       })
 
       if (!txn) {
-        console.warn(`[A 은행] 거래 없음: ${msg.transactionId}`)
+        log.warn({ event: 'transaction_not_found', transactionId: msg.transactionId }, '거래 없음')
         return
       }
 
@@ -92,7 +100,7 @@ async function main() {
           },
         })
 
-        console.log(`[A 은행] ✔ 완료 처리: ${msg.transactionNo}`)
+        log.info({ event: 'settlement_completed', transactionNo: msg.transactionNo }, '완료 처리')
       } else {
         const restoredBalance = Number(txn.account.balance) + amountNum
 
@@ -119,7 +127,7 @@ async function main() {
           }),
         ])
 
-        console.log(`[A 은행] ✔ 실패 처리 + 잔액 복구: ${msg.transactionNo}`)
+        log.info({ event: 'settlement_failed_with_restore', transactionNo: msg.transactionNo }, '실패 처리 + 잔액 복구')
       }
 
       // KftcReceipt 기록 + TransferInstruction 상태 업데이트
@@ -147,7 +155,7 @@ async function main() {
             },
           }),
         ])
-        console.log(`[A 은행] ✔ KftcReceipt + TransferInstruction 기록: ${msg.transactionNo}`)
+        log.info({ event: 'kftc_receipt_recorded', transactionNo: msg.transactionNo }, 'KftcReceipt + TransferInstruction 기록')
       }
 
       // Step 9: 공동망에 정산 수신 확인 ACK
@@ -160,12 +168,13 @@ async function main() {
           settledAt:     new Date().toISOString(),
         }) }],
       })
-      console.log(`[A 은행] ✔ 정산 수신 ACK 발신: ${msg.transactionNo}`)
+      log.info({ event: 'settled_ack_sent', transactionNo: msg.transactionNo }, '정산 수신 ACK 발신')
+      }) // end runWithKafkaSpan
     },
   })
 }
 
 main().catch((err) => {
-  console.error('[A 은행 Settlement Consumer] 오류:', err)
+  log.fatal({ err }, 'Settlement Consumer 치명적 오류')
   process.exit(1)
 })

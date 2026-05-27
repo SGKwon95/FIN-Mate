@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { logger } from "@/lib/logger"
 
 const ML_SERVER_URL = process.env.ML_SERVER_URL ?? "http://localhost:8001"
 
@@ -117,6 +118,9 @@ export async function POST(
     purpose,
   }
 
+  logger.info({ event: 'ml_inference_start', applicationId: id, loanAmnt: payload.loan_amnt }, 'ML 추론 시작')
+  const mlStart = Date.now()
+
   let mlResult: { decision: string; default_prob: number; score: number; threshold: number }
   try {
     const res = await fetch(`${ML_SERVER_URL}/predict`, {
@@ -130,7 +134,16 @@ export async function POST(
       throw new Error(`ML 서버 오류: ${text}`)
     }
     mlResult = await res.json()
+    logger.info({
+      event: 'ml_inference_result',
+      applicationId: id,
+      decision: mlResult.decision,
+      score: mlResult.score,
+      defaultProb: mlResult.default_prob,
+      durationMs: Date.now() - mlStart,
+    }, 'ML 추론 완료')
   } catch (err) {
+    logger.error({ event: 'ml_inference_error', applicationId: id, err: (err as Error).message, durationMs: Date.now() - mlStart }, 'ML 추론 실패')
     return NextResponse.json(
       { error: `ML 추론 서버 연결 실패: ${(err as Error).message}` },
       { status: 502 }
