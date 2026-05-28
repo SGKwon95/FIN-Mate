@@ -3,6 +3,7 @@ import { Star, LogOut } from "lucide-react";
 import { auth, signOut } from "@/auth";
 import { getUnreadCount } from "@/lib/notifications";
 import NotificationBell from "@/components/layout/NotificationBell";
+import IdleTimeout from "@/components/layout/IdleTimeout";
 
 export default async function Header() {
   const session = await auth();
@@ -26,11 +27,13 @@ export default async function Header() {
         </Link>
 
         {/* 우측 액션 */}
-        <div className="flex items-center gap-1">
-          <span className="text-kb-navy/70 text-sm mr-1 hidden sm:block">
+        <div className="flex items-center gap-2">
+          <span className="text-kb-navy/70 text-sm hidden sm:block">
             <span className="font-semibold text-kb-navy">{userName}</span>
             <span>님</span>
           </span>
+
+          {process.env.NODE_ENV !== 'development' && <IdleTimeout />}
 
           {/* 알림 */}
           <NotificationBell initialUnreadCount={unreadCount} />
