@@ -18,7 +18,6 @@ import {
   Percent,
   RefreshCw,
   Calculator,
-  BotMessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -76,7 +75,6 @@ const NAV_ITEMS: NavItem[] = [
       { href: "/products/loan",    icon: Banknote,  label: "대출" },
     ],
   },
-  { href: "/chat",     icon: BotMessageSquare, label: "AI 상담" },
   { href: "/settings", icon: Settings, label: "설정" },
 ];
 
@@ -98,7 +96,6 @@ export default function Sidebar() {
             const isGroupActive =
               (item.basePath ? pathname.startsWith(item.basePath) : false) ||
               item.children.some((c) => pathname.startsWith(c.href));
-            // 자식 경로가 활성이면 항상 열림, 아니면 수동 토글
             const isOpen = isGroupActive || openGroups.includes(item.label);
 
             return (

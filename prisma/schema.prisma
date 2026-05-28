@@ -997,3 +997,21 @@ model ScheduledTransferExecution {
   @@index([scheduledTransferId], map: "idx_ste_scheduled")
   @@map("scheduled_transfer_execution")
 }
+
+// ============================================================
+// 30. RAG 문서 청크 (pgvector)
+// embedding 컬럼은 Unsupported — $queryRaw로만 접근
+// ============================================================
+model DocumentChunk {
+  id         String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  docName    String                      @map("doc_name")
+  articleNum String?                     @map("article_num")
+  sectionNum String?                     @map("section_num")
+  content    String
+  metadata   Json                        @default("{}")
+  embedding  Unsupported("vector(768)")?
+  createdAt  DateTime                    @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([docName], map: "idx_doc_chunk_doc_name")
+  @@map("document_chunks")
+}

@@ -18,7 +18,9 @@
     "loan:train": "python loan_model.py",
     "loan:ml": "uvicorn loan_inference_server:app --port 8001 --reload",
     "langsmith:eval": "tsx --env-file=.env scripts/langsmith-eval.ts",
-    "minio:upload-terms": "tsx --env-file=.env scripts/upload-terms.ts"
+    "minio:upload-terms": "tsx --env-file=.env scripts/upload-terms.ts",
+    "rag:index": "tsx --env-file=.env scripts/index-terms.ts",
+    "rag:eval": "tsx --env-file=.env scripts/rag-eval.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

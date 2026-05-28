@@ -2,8 +2,7 @@
 
 import { useChat } from '@ai-sdk/react'
 import { useRef, useEffect, useState } from 'react'
-import { useSession } from 'next-auth/react'
-import { Send, Bot, User, Paperclip, X } from 'lucide-react'
+import { Send, Bot, User, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
 
@@ -12,14 +11,20 @@ const MODELS = [
   { id: 'google/gemma-4-e4b',   label: 'Gemma 4' },
 ]
 
-export default function ChatInterface() {
-  const { data: session } = useSession()
-  const isAdmin = session?.user?.isEmployee === true
-
+export default function ChatInterface({
+  onClose,
+  initialContext,
+}: {
+  onClose?: () => void
+  initialContext?: string
+} = {}) {
   const [modelId, setModelId] = useState('qwen2.5-14b-instruct')
-  const [retrievedContext, setRetrievedContext] = useState('')
-  const [fileName, setFileName] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [retrievedContext, setRetrievedContext] = useState(initialContext ?? '')
+
+  useEffect(() => {
+    if (initialContext) setRetrievedContext(initialContext)
+  }, [initialContext])
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -39,23 +44,6 @@ export default function ChatInterface() {
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 128) + 'px'
   }, [input])
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      setRetrievedContext(ev.target?.result as string ?? '')
-      setFileName(file.name)
-    }
-    reader.readAsText(file, 'UTF-8')
-    e.target.value = ''
-  }
-
-  function clearDocument() {
-    setRetrievedContext('')
-    setFileName('')
-  }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -89,38 +77,14 @@ export default function ChatInterface() {
           </select>
         </div>
 
-        {/* 문서 업로드 — 직원(관리자)만 표시 */}
-        {isAdmin && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.md,.csv"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            {fileName ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-kb-yellow-light border border-kb-yellow text-kb-navy text-xs font-medium max-w-[160px]">
-                <Paperclip className="w-3.5 h-3.5 shrink-0 text-kb-navy" />
-                <span className="truncate">{fileName}</span>
-                <button
-                  onClick={clearDocument}
-                  className="shrink-0 ml-0.5 hover:text-kb-red transition-colors"
-                  aria-label="문서 제거"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-kb-gray-border bg-kb-gray-light text-xs text-kb-gray hover:bg-kb-yellow-light hover:text-kb-navy hover:border-kb-yellow transition-colors font-medium"
-              >
-                <Paperclip className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">문서 업로드</span>
-              </button>
-            )}
-          </>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-full flex items-center justify-center text-kb-gray hover:bg-kb-gray-light transition-colors"
+            aria-label="닫기"
+          >
+            <X className="w-4 h-4" />
+          </button>
         )}
       </div>
 
@@ -134,19 +98,12 @@ export default function ChatInterface() {
             <div className="space-y-1.5">
               <p className="font-semibold text-kb-navy text-base">AI 금융 상담원</p>
               <p className="text-kb-gray text-sm leading-relaxed max-w-xs">
-                업무 문서를 업로드하고 궁금한 내용을 질문하세요.
-                <br />문서 내용만을 기반으로 정확하게 답변해 드립니다.
+                {onClose
+                  ? "상품에 관해 질문해보세요."
+                  : "궁금한 금융 상품에 대해 질문해보세요."
+                }
               </p>
             </div>
-            {isAdmin && !fileName && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-kb-navy text-white text-sm font-medium hover:bg-kb-navy-light transition-colors shadow-card"
-              >
-                <Paperclip className="w-4 h-4" />
-                문서 업로드하기
-              </button>
-            )}
           </div>
         )}
 
@@ -242,11 +199,6 @@ export default function ChatInterface() {
 
       {/* ── 하단 입력바 ───────────────────────────────── */}
       <div className="bg-white border-t border-kb-gray-border px-4 py-3 shrink-0">
-        {isAdmin && !fileName && messages.length > 0 && (
-          <p className="text-xs text-kb-gray text-center mb-2">
-            업무 문서를 업로드하면 더 정확한 답변을 받을 수 있어요.
-          </p>
-        )}
         <form onSubmit={handleSubmit} className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
