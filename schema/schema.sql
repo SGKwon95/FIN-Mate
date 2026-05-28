@@ -63,7 +63,7 @@ CREATE TABLE party (
     party_id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     -- 화면 표시 및 대고객 서비스용 고유 번호 (Unique 인덱스)
     -- 예: 'IND-2026-0001', 'COR-2026-0002' 형태로 Next.js 백엔드에서 생성해서 삽입
-    party_no                VARCHAR(30)  NOT NULL UNIQUE,
+    party_no                VARCHAR(30)  UNIQUE,          -- 화면 표시용 고객번호 (예: IND-2026-0001). NULL 허용
     party_name              VARCHAR(100) NOT NULL
     party_role              VARCHAR(20)  NOT NULL CHECK (party_role IN ('INDIVIDUAL', 'CORPORATE')),
     party_status            VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE'
@@ -218,7 +218,8 @@ CREATE INDEX idx_party_auth_login_id ON party_auth (login_id);
 CREATE TABLE product (
     product_id                          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     product_name                        VARCHAR(200) NOT NULL,
-    product_type_code                   VARCHAR(20)  NOT NULL REFERENCES common_code(type_code),
+    -- PROD_TYPE 그룹의 code 값(DEPOSIT|LOAN)을 직접 저장 (common_code 런타임 참조)
+    product_type_code                   VARCHAR(20)  NOT NULL,
     product_status                      VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE'
                                             CHECK (product_status IN ('ACTIVE', 'INACTIVE', 'SUSPENDED')),
     launch_date                         DATE         NOT NULL,
@@ -237,7 +238,7 @@ CREATE TABLE product (
     -- 예금자 보호 (예금보험공사, 1인당 5천만원 한도)
     is_deposit_insured                  BOOLEAN      NOT NULL DEFAULT FALSE,
     deposit_insurance_limit             NUMERIC(15,2),         -- 통상 50,000,000
-    description                         TEXT,
+    description                         TEXT,                  -- 상품 설명 (CSV 임포트 등 부가 정보)
 
     -- 감사 공통 필드
     created_by                          UUID         NOT NULL,
@@ -561,7 +562,7 @@ CREATE INDEX idx_crb_contract ON contract_rate_benefit (contract_id);
 CREATE TABLE account (
     account_id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     account_number          VARCHAR(30)   NOT NULL UNIQUE,
-    account_password_hash   VARCHAR(50)   NOT NULL,
+    account_password_hash   VARCHAR(60)   NOT NULL,
     party_id             UUID          NOT NULL REFERENCES party(party_id),
     contract_id             UUID          REFERENCES contract(contract_id),
     account_type            VARCHAR(20)   NOT NULL
@@ -663,29 +664,31 @@ CREATE INDEX idx_transfer_instruction_network ON transfer_instruction (clearing_
 
 
 -- ============================================================
--- 14-1. KFTC 수신이력 (오픈뱅킹 API 응답 수신 이력)
+-- 14-1. KFTC 수신이력 (금융결제원 응답 로그)
 -- ============================================================
 CREATE TABLE kftc_receipt (
     receipt_id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    instruction_id      UUID          NOT NULL REFERENCES transfer_instruction(instruction_id),
-
-    rsp_code            VARCHAR(10)   NOT NULL,    -- 오픈뱅킹 응답코드 (A0000=정상)
-    rsp_message         VARCHAR(200),              -- 응답메시지
-    bank_rsp_code       VARCHAR(10),               -- 수취은행 응답코드
-    bank_rsp_message    VARCHAR(200),              -- 수취은행 응답메시지
-    fintech_use_num     VARCHAR(30),               -- 핀테크이용번호
-    bank_tran_id        VARCHAR(30),               -- 은행거래고유번호 (KFTC 채번, 예: M202607010001)
-
+    direction           VARCHAR(10)   NOT NULL DEFAULT 'OUTBOUND'
+                            CHECK (direction IN ('INBOUND', 'OUTBOUND')),
+    instruction_id      UUID          REFERENCES transfer_instruction(instruction_id),
+    transaction_id      UUID          UNIQUE REFERENCES transaction(transaction_id),
+    rsp_code            VARCHAR(10)   NOT NULL,             -- 금결원 응답코드 (오픈뱅킹: A0000)
+    rsp_message         VARCHAR(200),
+    bank_rsp_code       VARCHAR(10),                        -- 수취은행 응답코드
+    bank_rsp_message    VARCHAR(200),
+    fintech_use_num     VARCHAR(30),                        -- 핀테크 이용기관번호
+    bank_tran_id        VARCHAR(30),                        -- 금결원 거래고유번호
     received_at         TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-
     created_by          UUID,
     updated_by          UUID,
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_kftc_receipt_instruction ON kftc_receipt (instruction_id);
-CREATE INDEX idx_kftc_receipt_bank_tran   ON kftc_receipt (bank_tran_id) WHERE bank_tran_id IS NOT NULL;
+CREATE INDEX idx_kftc_receipt_instruction ON kftc_receipt (instruction_id) WHERE instruction_id IS NOT NULL;
+CREATE INDEX idx_kftc_receipt_transaction ON kftc_receipt (transaction_id) WHERE transaction_id IS NOT NULL;
+CREATE INDEX idx_kftc_receipt_bank_tran   ON kftc_receipt (bank_tran_id)   WHERE bank_tran_id IS NOT NULL;
+CREATE INDEX idx_kftc_receipt_direction   ON kftc_receipt (direction);
 
 
 -- ============================================================
@@ -776,7 +779,7 @@ CREATE INDEX idx_transaction_settlement    ON transaction (settlement_date)   WH
 -- ============================================================
 CREATE TABLE savings_payment (
     savings_payment_id  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    contract_id         UUID          NOT NULL REFERENCES contract(contract_id),
+    contract_id         UUID          REFERENCES contract(contract_id),
     account_id          UUID          NOT NULL REFERENCES account(account_id),
 
     installment_no      SMALLINT      NOT NULL CHECK (installment_no >= 1),  -- 납입 회차 (1부터 시작)
@@ -978,11 +981,24 @@ CREATE TABLE loan_application (
     employee_id             UUID          REFERENCES employee(employee_id),
 
     -- 상담 기록
-    consultation_date       DATE,            -- 여신 상담일
+    consultation_date       VARCHAR(8),      -- 여신 상담일
     consultation_memo       TEXT,            -- 상담 메모
 
     submitted_at            TIMESTAMPTZ,
     decided_at              TIMESTAMPTZ,
+
+    -- ML 심사 입력 피처 (사용자 직접 입력)
+    ml_credit_score         INT,
+    ml_home_ownership       VARCHAR(20),
+    ml_dti                  NUMERIC(7,2),
+    ml_inq_last_6mths       INT,
+    ml_pub_rec              INT,
+
+    -- ML 심사 결과
+    ml_score                INT,
+    ml_decision             VARCHAR(10),
+    ml_default_prob         NUMERIC(7,4),
+    ml_screened_at          TIMESTAMPTZ,
 
     created_by              UUID,
     updated_by              UUID,
@@ -1037,13 +1053,13 @@ CREATE TABLE loan_collateral (
 
     -- 담보 평가
     appraised_value     NUMERIC(15,2), -- 감정가
-    appraised_at        DATE,          -- 감정 기준일
+    appraised_at        VARCHAR(8),    -- 감정 기준일
     appraiser           VARCHAR(100),  -- 감정기관명
     self_appraised          BOOLEAN       NOT NULL DEFAULT FALSE,  -- 담보 자체평가 여부 (FALSE=집중화센터 위탁, TRUE=영업점 자체)
     appraisal_requested_at  TIMESTAMPTZ,  -- 감정 요청일
     appraisal_completed_at  TIMESTAMPTZ,  -- 감정 완료일
     lien_amount         NUMERIC(15,2), -- 설정 근저당 금액
-    lien_registered_at      DATE,        -- 저당권 설정 등기일
+    lien_registered_at      VARCHAR(8),  -- 저당권 설정 등기일
     lien_reg_no           VARCHAR(50),   -- 저당권 등기번호
     lien_confirmed          BOOLEAN       NOT NULL DEFAULT FALSE,  -- 채권보전(저당권설정) 완료 확인 여부 — 여신실행 전 TRUE여야 함
 
@@ -1070,7 +1086,7 @@ CREATE TABLE loan_delinquency (
     overdue_days        INT           NOT NULL,             -- 연체일수
 
     started_at          DATE          NOT NULL,             -- 연체 시작일
-    recovered_at        DATE,                               -- 정상화일 (NULL=현재 연체 중)
+    recovered_at        VARCHAR(8),                        -- 정상화일 (NULL=현재 연체 중)
 
     -- 사후관리
     fund_misuse_flag      BOOLEAN       NOT NULL DEFAULT FALSE,   -- 용도 외 유용 여부
@@ -1083,7 +1099,7 @@ CREATE TABLE loan_delinquency (
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT chk_loan_delinquency_dates CHECK (recovered_at IS NULL OR recovered_at >= started_at)
+    CONSTRAINT chk_loan_delinquency_overdue CHECK (overdue_days >= 0)
 );
 
 CREATE INDEX idx_loan_delinquency_contract ON loan_delinquency (contract_id);
@@ -1096,17 +1112,11 @@ CREATE INDEX idx_loan_delinquency_status   ON loan_delinquency (delinquency_stat
 CREATE TABLE notification (
     notification_id     UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     party_id            UUID          NOT NULL REFERENCES party(party_id),
-
-    notification_type                VARCHAR(50)   NOT NULL
-                            CHECK (notification_type IN (
-                                'TRANSFER_OUT', 'TRANSFER_IN', 'LOW_BALANCE', 'ACCOUNT_LOCKED',
-                                'SAVINGS_DUE', 'SAVINGS_PAID', 'SAVINGS_MATURITY', 'RISK_ALERT'
-                            )),
-    notification_title               VARCHAR(200)  NOT NULL,
-    notification_body                VARCHAR(500)  NOT NULL,
+    notification_type   VARCHAR(50)   NOT NULL,
+    notification_title  VARCHAR(200)  NOT NULL,
+    notification_body   VARCHAR(500)  NOT NULL,
     is_read             BOOLEAN       NOT NULL DEFAULT FALSE,
     linked_entity_id    UUID,
-
     created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
@@ -1116,7 +1126,48 @@ CREATE INDEX idx_notification_created_at ON notification (created_at DESC);
 
 
 -- ============================================================
--- 29. 감사 로그 (Audit Trail) — 모든 테이블 변경 이력
+-- 29. 자동이체
+-- ============================================================
+CREATE TABLE scheduled_transfer (
+    scheduled_transfer_id   UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    party_id                UUID          NOT NULL REFERENCES party(party_id),
+    from_account_id         UUID          NOT NULL REFERENCES account(account_id),
+    to_bank_code            VARCHAR(10)   NOT NULL,
+    to_account_number       VARCHAR(30)   NOT NULL,
+    to_account_name         VARCHAR(100)  NOT NULL,
+    amount                  NUMERIC(15,2) NOT NULL,
+    memo                    VARCHAR(200),
+    transfer_day            SMALLINT      NOT NULL,  -- 매월 이체일 (1~31)
+    start_date              VARCHAR(8)    NOT NULL,
+    end_date                VARCHAR(8),
+    status                  VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'
+                                CHECK (status IN ('ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED')),
+    last_executed_date      VARCHAR(8),
+    next_execution_date     VARCHAR(8),
+    created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_scheduled_transfer_party  ON scheduled_transfer (party_id);
+CREATE INDEX idx_scheduled_transfer_active ON scheduled_transfer (status, next_execution_date);
+
+
+CREATE TABLE scheduled_transfer_execution (
+    execution_id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    scheduled_transfer_id   UUID          NOT NULL REFERENCES scheduled_transfer(scheduled_transfer_id),
+    transaction_id          UUID          REFERENCES transaction(transaction_id),
+    execution_date          VARCHAR(8)    NOT NULL,
+    status                  VARCHAR(20)   NOT NULL
+                                CHECK (status IN ('SUCCESS', 'FAILED', 'SKIPPED')),
+    failure_reason          VARCHAR(200),
+    executed_at             TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ste_scheduled ON scheduled_transfer_execution (scheduled_transfer_id);
+
+
+-- ============================================================
+-- 감사 로그 (Audit Trail) — 모든 테이블 변경 이력
 -- -- ============================================================
 -- CREATE TABLE audit_log (
 --     audit_id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
