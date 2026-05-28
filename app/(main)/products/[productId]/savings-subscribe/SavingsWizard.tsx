@@ -21,9 +21,10 @@ type Product = {
   maxAmount: number
   minPeriodMonths: number
   maxPeriodMonths: number
+  termsUrl: string
 }
 
-type Step = "form" | "confirm" | "done"
+type Step = "form" | "terms" | "confirm" | "done"
 
 const ACCOUNT_LABEL: Record<string, string> = {
   GENERAL:      "입출금",
@@ -44,6 +45,7 @@ export default function SavingsWizard({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [step, setStep] = useState<Step>("form")
+  const [agreed, setAgreed] = useState(false)
 
   const [fromId, setFromId] = useState(accounts[0]?.accountId ?? "")
   const [amountStr, setAmountStr] = useState("")
@@ -69,10 +71,14 @@ export default function SavingsWizard({
     return ""
   }
 
-  function goConfirm() {
+  function goTerms() {
     const err = validate()
     if (err) { setErrorMsg(err); return }
     setErrorMsg("")
+    setStep("terms")
+  }
+
+  function goConfirm() {
     setIdempotencyKey(crypto.randomUUID())
     setStep("confirm")
   }
@@ -125,6 +131,43 @@ export default function SavingsWizard({
             홈으로
           </button>
         </div>
+      </div>
+    )
+  }
+
+  // ── 약관 동의 ─────────────────────────────────────────
+  if (step === "terms") {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-6 flex flex-col" style={{ height: "calc(100dvh - 120px)" }}>
+        <button onClick={() => setStep("form")} className="flex items-center gap-1 text-kb-gray text-sm mb-4">
+          <ArrowLeft className="w-4 h-4" /> 이전
+        </button>
+        <h2 className="text-lg font-bold text-kb-navy mb-3">약관 동의</h2>
+        <div className="flex-1 min-h-0 rounded-2xl border border-kb-gray-border overflow-hidden mb-4">
+          <iframe
+            src={product.termsUrl}
+            className="w-full h-full"
+            title="적금 거래 약관"
+          />
+        </div>
+        <label className="flex items-center gap-3 cursor-pointer mb-4 select-none">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={e => setAgreed(e.target.checked)}
+            className="w-5 h-5 accent-kb-navy rounded cursor-pointer"
+          />
+          <span className="text-sm text-kb-navy font-medium">
+            위 약관 내용을 확인하였으며 이에 동의합니다.
+          </span>
+        </label>
+        <button
+          onClick={goConfirm}
+          disabled={!agreed}
+          className="w-full py-4 bg-kb-navy text-white font-bold rounded-2xl text-base disabled:opacity-40 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+        >
+          동의하고 계속 <ChevronRight className="w-5 h-5" />
+        </button>
       </div>
     )
   }
@@ -280,7 +323,7 @@ export default function SavingsWizard({
       )}
 
       <button
-        onClick={goConfirm}
+        onClick={goTerms}
         className="mt-6 w-full py-4 bg-kb-navy text-white font-bold rounded-2xl text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
       >
         다음 <ChevronRight className="w-5 h-5" />

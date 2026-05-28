@@ -1,4 +1,5 @@
 import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import Header from "@/components/layout/Header"
 import Sidebar from "@/components/layout/Sidebar"
@@ -8,6 +9,14 @@ import NextAuthProvider from "@/components/layout/NextAuthProvider"
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   if (!session?.user) redirect("/login")
+
+  const partyAuth = await prisma.partyAuth.findUnique({
+    where: { partyId: session.user.partyId },
+    select: { sessionToken: true },
+  })
+  if (partyAuth?.sessionToken && partyAuth.sessionToken !== session.user.sessionToken) {
+    redirect("/login?error=duplicate")
+  }
 
   return (
     <NextAuthProvider>

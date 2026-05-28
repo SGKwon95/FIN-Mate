@@ -1492,46 +1492,457 @@ async function main() {
     },
   });
 
-  await prisma.product.createMany({
-    data: [
-      {
-        productName: "SG 내맘대로 적금",
-        productTypeCode: "DEPOSIT",
-        launchDate: new Date("2021-03-15"),
-        productStatus: "ACTIVE",
-        isDepositInsured: true,
-        depositInsuranceLimit: 50_000_000,
-        salesTarget: "ALL",
-        periodType: "FLEXIBLE",
-        contractPeriodMonths: 12,
-        createdBy: ADMIN_UUID,
-        updatedBy: ADMIN_UUID,
-      },
-      {
-        productName: "SG 주택담보대출",
-        productTypeCode: "LOAN",
-        launchDate: new Date("2019-06-01"),
-        productStatus: "ACTIVE",
-        isDepositInsured: false,
-        salesTarget: "INDIVIDUAL",
-        periodType: "FLEXIBLE",
-        createdBy: ADMIN_UUID,
-        updatedBy: ADMIN_UUID,
-      },
-      {
-        productName: "SG 직장인 신용대출",
-        productTypeCode: "LOAN",
-        launchDate: new Date("2022-09-01"),
-        productStatus: "ACTIVE",
-        isDepositInsured: false,
-        salesTarget: "INDIVIDUAL",
-        periodType: "FLEXIBLE",
-        createdBy: ADMIN_UUID,
-        updatedBy: ADMIN_UUID,
-      },
-    ],
+  const savingsProduct = await prisma.product.create({
+    data: {
+      productName: "SG 내맘대로 적금",
+      productTypeCode: "DEPOSIT",
+      launchDate: new Date("2021-03-15"),
+      productStatus: "ACTIVE",
+      isDepositInsured: true,
+      depositInsuranceLimit: 50_000_000,
+      salesTarget: "ALL",
+      periodType: "FLEXIBLE",
+      contractPeriodMonths: 12,
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
   });
-  console.log("  ✔ 상품 4개 생성 (정기예금·적금·주담대·신용대출)");
+
+  await prisma.depositDetail.create({
+    data: {
+      productId:    savingsProduct.productId,
+      interestType: "SIMPLE",
+      rateType:     "FIXED",
+      transactionType: "SAVINGS",
+      minAmount:    10_000,
+      maxAmount:    1_000_000,
+      minPeriodMonths: 6,
+      maxPeriodMonths: 60,
+      earlyWithdrawalPenaltyRate: 0.002,
+    },
+  });
+
+  await prisma.productRate.create({
+    data: {
+      productId: savingsProduct.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.045,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  // 정기예금 추가 상품
+  const timeDeposit2 = await prisma.product.create({
+    data: {
+      productName: "SG 플러스 정기예금",
+      productTypeCode: "DEPOSIT",
+      launchDate: new Date("2022-05-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: true,
+      depositInsuranceLimit: 50_000_000,
+      salesTarget: "ALL",
+      periodType: "FIXED",
+      contractPeriodMonths: 6,
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.depositDetail.create({
+    data: {
+      productId: timeDeposit2.productId,
+      interestType: "SIMPLE",
+      rateType: "FIXED",
+      transactionType: "TIME_DEPOSIT",
+      minAmount: 100_000,
+      maxAmount: 500_000_000,
+      minPeriodMonths: 3,
+      maxPeriodMonths: 24,
+      earlyWithdrawalPenaltyRate: 0.003,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: timeDeposit2.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.032,
+      effectiveFrom: new Date("2024-06-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  const timeDeposit3 = await prisma.product.create({
+    data: {
+      productName: "SG 프리미엄 정기예금",
+      productTypeCode: "DEPOSIT",
+      launchDate: new Date("2023-01-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: true,
+      depositInsuranceLimit: 50_000_000,
+      salesTarget: "INDIVIDUAL",
+      periodType: "FIXED",
+      contractPeriodMonths: 24,
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.depositDetail.create({
+    data: {
+      productId: timeDeposit3.productId,
+      interestType: "COMPOUND",
+      rateType: "FIXED",
+      transactionType: "TIME_DEPOSIT",
+      minAmount: 1_000_000,
+      maxAmount: 2_000_000_000,
+      minPeriodMonths: 12,
+      maxPeriodMonths: 36,
+      earlyWithdrawalPenaltyRate: 0.008,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: timeDeposit3.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.038,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  // 적금 추가 상품
+  const savingsProduct2 = await prisma.product.create({
+    data: {
+      productName: "SG 청년희망 적금",
+      productTypeCode: "DEPOSIT",
+      launchDate: new Date("2022-08-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: true,
+      depositInsuranceLimit: 50_000_000,
+      salesTarget: "INDIVIDUAL",
+      periodType: "FIXED",
+      contractPeriodMonths: 24,
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.depositDetail.create({
+    data: {
+      productId: savingsProduct2.productId,
+      interestType: "SIMPLE",
+      rateType: "FIXED",
+      transactionType: "SAVINGS",
+      minAmount: 10_000,
+      maxAmount: 500_000,
+      minPeriodMonths: 12,
+      maxPeriodMonths: 24,
+      earlyWithdrawalPenaltyRate: 0.003,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: savingsProduct2.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.06,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  const savingsProduct3 = await prisma.product.create({
+    data: {
+      productName: "SG 목돈마련 적금",
+      productTypeCode: "DEPOSIT",
+      launchDate: new Date("2021-11-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: true,
+      depositInsuranceLimit: 50_000_000,
+      salesTarget: "ALL",
+      periodType: "FLEXIBLE",
+      contractPeriodMonths: 36,
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.depositDetail.create({
+    data: {
+      productId: savingsProduct3.productId,
+      interestType: "SIMPLE",
+      rateType: "FIXED",
+      transactionType: "SAVINGS",
+      minAmount: 50_000,
+      maxAmount: 3_000_000,
+      minPeriodMonths: 12,
+      maxPeriodMonths: 60,
+      earlyWithdrawalPenaltyRate: 0.002,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: savingsProduct3.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.042,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  // 대출 상품 (loanDetail 포함)
+  const mortgage1 = await prisma.product.create({
+    data: {
+      productName: "SG 주택담보대출",
+      productTypeCode: "LOAN",
+      launchDate: new Date("2019-06-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: false,
+      salesTarget: "INDIVIDUAL",
+      periodType: "FLEXIBLE",
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.loanDetail.create({
+    data: {
+      productId: mortgage1.productId,
+      baseRateType: "FIXED",
+      interestType: "COMPOUND",
+      collateralRequired: true,
+      collateralType: "REAL_ESTATE",
+      lienAvailable: true,
+      maxLtvRatio: 0.70,
+      maxDtiRatio: 0.40,
+      minLoanAmount: 10_000_000,
+      maxLoanAmount: 1_500_000_000,
+      maxLoanPeriodMonths: 360,
+      repaymentMethod: "EQUAL_INSTALLMENT",
+      earlyRepaymentAllowed: true,
+      earlyRepaymentFeeRate: 0.014,
+      overdueInterestRate: 0.15,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: mortgage1.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.0385,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  const mortgage2 = await prisma.product.create({
+    data: {
+      productName: "SG 아파트론",
+      productTypeCode: "LOAN",
+      launchDate: new Date("2021-03-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: false,
+      salesTarget: "INDIVIDUAL",
+      periodType: "FLEXIBLE",
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.loanDetail.create({
+    data: {
+      productId: mortgage2.productId,
+      baseRateType: "VARIABLE",
+      interestType: "COMPOUND",
+      collateralRequired: true,
+      collateralType: "REAL_ESTATE",
+      lienAvailable: true,
+      maxLtvRatio: 0.60,
+      maxDtiRatio: 0.40,
+      minLoanAmount: 50_000_000,
+      maxLoanAmount: 3_000_000_000,
+      maxLoanPeriodMonths: 420,
+      repaymentMethod: "EQUAL_PRINCIPAL",
+      earlyRepaymentAllowed: true,
+      earlyRepaymentFeeRate: 0.012,
+      overdueInterestRate: 0.15,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: mortgage2.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.0362,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  const jeonse1 = await prisma.product.create({
+    data: {
+      productName: "SG 전세자금대출",
+      productTypeCode: "LOAN",
+      launchDate: new Date("2020-04-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: false,
+      salesTarget: "INDIVIDUAL",
+      periodType: "FLEXIBLE",
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.loanDetail.create({
+    data: {
+      productId: jeonse1.productId,
+      baseRateType: "FIXED",
+      interestType: "SIMPLE",
+      collateralRequired: true,
+      collateralType: "JEONSE_RIGHT",
+      lienAvailable: false,
+      maxLtvRatio: 0.80,
+      minLoanAmount: 5_000_000,
+      maxLoanAmount: 500_000_000,
+      maxLoanPeriodMonths: 24,
+      repaymentMethod: "BULLET",
+      earlyRepaymentAllowed: true,
+      earlyRepaymentFeeRate: 0.0,
+      overdueInterestRate: 0.15,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: jeonse1.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.0295,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  const jeonse2 = await prisma.product.create({
+    data: {
+      productName: "SG 청년 전세론",
+      productTypeCode: "LOAN",
+      launchDate: new Date("2022-07-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: false,
+      salesTarget: "INDIVIDUAL",
+      periodType: "FLEXIBLE",
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.loanDetail.create({
+    data: {
+      productId: jeonse2.productId,
+      baseRateType: "FIXED",
+      interestType: "SIMPLE",
+      collateralRequired: true,
+      collateralType: "JEONSE_RIGHT",
+      lienAvailable: false,
+      maxLtvRatio: 0.90,
+      minLoanAmount: 1_000_000,
+      maxLoanAmount: 200_000_000,
+      maxLoanPeriodMonths: 24,
+      repaymentMethod: "BULLET",
+      earlyRepaymentAllowed: true,
+      earlyRepaymentFeeRate: 0.0,
+      overdueInterestRate: 0.15,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: jeonse2.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.025,
+      effectiveFrom: new Date("2024-06-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  const credit1 = await prisma.product.create({
+    data: {
+      productName: "SG 직장인 신용대출",
+      productTypeCode: "LOAN",
+      launchDate: new Date("2022-09-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: false,
+      salesTarget: "INDIVIDUAL",
+      periodType: "FLEXIBLE",
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.loanDetail.create({
+    data: {
+      productId: credit1.productId,
+      baseRateType: "VARIABLE",
+      interestType: "COMPOUND",
+      collateralRequired: false,
+      lienAvailable: false,
+      minLoanAmount: 1_000_000,
+      maxLoanAmount: 100_000_000,
+      maxLoanPeriodMonths: 60,
+      repaymentMethod: "EQUAL_INSTALLMENT",
+      earlyRepaymentAllowed: true,
+      earlyRepaymentFeeRate: 0.01,
+      overdueInterestRate: 0.20,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: credit1.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.056,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  const credit2 = await prisma.product.create({
+    data: {
+      productName: "SG 비상금 대출",
+      productTypeCode: "LOAN",
+      launchDate: new Date("2023-05-01"),
+      productStatus: "ACTIVE",
+      isDepositInsured: false,
+      salesTarget: "ALL",
+      periodType: "FLEXIBLE",
+      createdBy: ADMIN_UUID,
+      updatedBy: ADMIN_UUID,
+    },
+  });
+  await prisma.loanDetail.create({
+    data: {
+      productId: credit2.productId,
+      baseRateType: "VARIABLE",
+      interestType: "SIMPLE",
+      collateralRequired: false,
+      lienAvailable: false,
+      minLoanAmount: 100_000,
+      maxLoanAmount: 5_000_000,
+      maxLoanPeriodMonths: 12,
+      repaymentMethod: "BULLET",
+      earlyRepaymentAllowed: true,
+      earlyRepaymentFeeRate: 0.0,
+      overdueInterestRate: 0.20,
+    },
+  });
+  await prisma.productRate.create({
+    data: {
+      productId: credit2.productId,
+      rateType: "BASE",
+      rateStructure: "FIXED",
+      rate: 0.0795,
+      effectiveFrom: new Date("2024-01-01"),
+      createdBy: ADMIN_UUID,
+    },
+  });
+
+  console.log("  ✔ 상품 생성 완료 (정기예금 3, 적금 3, 주담대 2, 전세 2, 신용 2)");
 
   // ── 6. 계좌 ───────────────────────────────────────────
   const accountPwHash = await bcrypt.hash("1234", 10);
@@ -1564,6 +1975,21 @@ async function main() {
     },
   });
 
+  const savingsContract = await prisma.contract.create({
+    data: {
+      partyId:              party.partyId,
+      productId:            savingsProduct.productId,
+      contractDate:         "20230110",
+      executionDate:        "20230110",
+      maturityDate:         "20270110",
+      contractPeriodMonths: 48,
+      contractAmount:       50_000,
+      contractStatus:       "ACTIVE",
+      appliedRate:          0.045,
+      createdBy:            ADMIN_UUID,
+    },
+  });
+
   const savings = await prisma.account.create({
     data: {
       partyId: party.partyId,
@@ -1575,9 +2001,40 @@ async function main() {
       accountPurpose: "SAVINGS",
       openedDate: "20230110",
       displayOrder: 2,
+      contractId: savingsContract.contractId,
     },
   });
-  console.log("  ✔ 계좌 3개 생성 (입출금, 급여, 적금)");
+
+  const timeDepositContract = await prisma.contract.create({
+    data: {
+      partyId:              party.partyId,
+      productId:            timeDepositProduct.productId,
+      contractDate:         "20240601",
+      executionDate:        "20240601",
+      maturityDate:         "20250601",
+      contractPeriodMonths: 12,
+      contractAmount:       5_000_000,
+      contractStatus:       "ACTIVE",
+      appliedRate:          0.035,
+      createdBy:            ADMIN_UUID,
+    },
+  });
+
+  await prisma.account.create({
+    data: {
+      partyId: party.partyId,
+      accountNumber: "00900-12-3456784",
+      accountPasswordHash: accountPwHash,
+      accountType: "DEPOSIT",
+      accountStatus: "ACTIVE",
+      balance: 5_000_000,
+      accountPurpose: "TIME_DEPOSIT",
+      openedDate: "20240601",
+      displayOrder: 3,
+      contractId: timeDepositContract.contractId,
+    },
+  });
+  console.log("  ✔ 계좌 4개 생성 (입출금, 급여, 적금, 정기예금)");
 
   // ── 7. 거래 내역 (입출금 계좌 기준) ──────────────────
   const txRows = [

@@ -27,6 +27,11 @@ export default async function AccountsPage() {
       balance:           true,
       openedDate:        true,
       lastTransactionAt: true,
+      contract: {
+        select: {
+          product: { select: { productName: true } },
+        },
+      },
     },
   })
 
@@ -36,6 +41,7 @@ export default async function AccountsPage() {
     ...a,
     balance: a.balance.toFixed(0),
     lastTransactionAt: a.lastTransactionAt?.toISOString() ?? null,
+    productName: a.contract?.product?.productName ?? null,
   }))
 
   return (

@@ -38,9 +38,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null
         }
 
+        const sessionToken = crypto.randomUUID()
         await prisma.partyAuth.update({
           where: { authId: partyAuth.authId },
-          data: { lastLoginAt: new Date(), failedAttemptCount: 0 },
+          data: { lastLoginAt: new Date(), failedAttemptCount: 0, sessionToken },
         })
 
         return {
@@ -48,6 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: partyAuth.party.partyName,
           partyId: partyAuth.partyId,
           isEmployee: partyAuth.party.employee !== null,
+          sessionToken,
         }
       },
     }),

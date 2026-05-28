@@ -176,6 +176,7 @@ model PartyAuth {
   failedAttemptCount Int       @default(0) @map("failed_attempt_count")
   lockedAt           DateTime? @map("locked_at") @db.Timestamptz()
   lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz()
+  sessionToken       String?   @unique @map("session_token") @db.VarChar(36)
   createdBy          String?   @map("created_by") @db.Uuid
   updatedBy          String?   @map("updated_by") @db.Uuid
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()

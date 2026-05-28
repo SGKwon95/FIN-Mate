@@ -12,7 +12,7 @@ export default auth(function middleware(req) {
   if (!isLoggedIn && !isPublic) {
     return NextResponse.redirect(new URL("/login", req.url))
   }
-  if (isLoggedIn && isPublic) {
+  if (isLoggedIn && isPublic && req.nextUrl.searchParams.get("error") !== "duplicate") {
     return NextResponse.redirect(new URL("/dashboard", req.url))
   }
   return NextResponse.next()

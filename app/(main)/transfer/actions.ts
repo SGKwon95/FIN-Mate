@@ -74,12 +74,13 @@ export async function executeTransfer(input: {
   const fromAccount = await prisma.account.findUnique({
     where: { accountId: fromAccountId },
     select: {
-      accountId: true,
-      partyId: true,
-      balance: true,
-      accountStatus: true,
-      isLocked: true,
-      accountNumber: true,
+      accountId:      true,
+      partyId:        true,
+      balance:        true,
+      accountStatus:  true,
+      isLocked:       true,
+      accountNumber:  true,
+      accountPurpose: true,
     },
   })
 
@@ -88,6 +89,9 @@ export async function executeTransfer(input: {
   }
   if (fromAccount.accountStatus !== "ACTIVE" || fromAccount.isLocked) {
     return { ok: false, message: "출금이 불가한 계좌입니다." }
+  }
+  if (["SAVINGS", "TIME_DEPOSIT"].includes(fromAccount.accountPurpose ?? "")) {
+    return { ok: false, message: "적금·정기예금 계좌는 출금할 수 없습니다." }
   }
   if (Number(fromAccount.balance) < amount) {
     return { ok: false, message: "잔액이 부족합니다." }

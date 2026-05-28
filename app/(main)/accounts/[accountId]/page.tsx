@@ -6,6 +6,7 @@ import { ArrowLeft, Lock } from "lucide-react"
 import Link from "next/link"
 import TransactionFilter from "@/components/accounts/TransactionFilter"
 import TransactionList from "@/components/accounts/TransactionList"
+import CancelSavingsButton from "@/components/accounts/CancelSavingsButton"
 import { Suspense } from "react"
 import type { Metadata } from "next"
 
@@ -32,18 +33,43 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
   const account = await prisma.account.findUnique({
     where: { accountId },
     select: {
-      accountId:     true,
-      accountNumber: true,
-      accountType:   true,
+      accountId:      true,
+      accountNumber:  true,
+      accountType:    true,
       accountPurpose: true,
-      balance:       true,
-      partyId:       true,
-      isLocked:      true,
-      openedDate:    true,
+      balance:        true,
+      partyId:        true,
+      isLocked:       true,
+      openedDate:     true,
+      contract: {
+        select: {
+          contractId:          true,
+          maturityDate:        true,
+          appliedRate:         true,
+          contractPeriodMonths: true,
+          product: { select: { productName: true } },
+        },
+      },
     },
   })
 
   if (!account || account.partyId !== session.user.partyId) notFound()
+
+  const isSavings = ["SAVINGS", "TIME_DEPOSIT"].includes(account.accountPurpose ?? "")
+
+  // 해약 시 환급받을 입출금 계좌 목록
+  const depositAccounts = isSavings
+    ? await prisma.account.findMany({
+        where: {
+          partyId:        session.user.partyId,
+          accountStatus:  "ACTIVE",
+          isLocked:       false,
+          accountPurpose: { notIn: ["SAVINGS", "TIME_DEPOSIT"] },
+        },
+        select: { accountId: true, accountNumber: true, accountPurpose: true },
+        orderBy: { displayOrder: "asc" },
+      })
+    : []
 
   // 기간 계산
   const periodDays = Number(period) || 30
@@ -112,6 +138,13 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
           )}
         </div>
 
+        {/* 상품명 */}
+        {account.contract?.product?.productName && (
+          <p className="text-white font-semibold text-base mb-1">
+            {account.contract.product.productName}
+          </p>
+        )}
+
         {/* 계좌번호 */}
         <p className="text-white/60 font-mono text-sm tracking-wide mb-3">
           {formatAccountNumber(account.accountNumber)}
@@ -122,8 +155,25 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
           {formatKRW(account.balance.toFixed(0))}
         </p>
 
-        {/* 개설일 */}
-        <p className="text-white/40 text-xs mt-1">개설일 {account.openedDate}</p>
+        {/* 개설일 + 금리 + 기간 */}
+        <div className="flex items-center gap-3 mt-1 flex-wrap">
+          <p className="text-white/40 text-xs">개설일 {account.openedDate}</p>
+          {account.contract?.appliedRate != null && (
+            <p className="text-kb-yellow text-xs font-semibold tabular-nums">
+              연 {Number(account.contract.appliedRate).toFixed(2)}%
+            </p>
+          )}
+          {account.contract?.contractPeriodMonths != null && (
+            <p className="text-white/40 text-xs">
+              {account.contract.contractPeriodMonths}개월
+            </p>
+          )}
+          {account.contract?.maturityDate && (
+            <p className="text-white/40 text-xs">
+              만기 {account.contract.maturityDate.slice(0,4)}.{account.contract.maturityDate.slice(4,6)}.{account.contract.maturityDate.slice(6,8)}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* 필터 (Suspense로 감싸서 hydration 분리) */}
@@ -134,6 +184,17 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
       {/* 거래 내역 */}
       <div className="pb-24 lg:pb-6">
         <TransactionList transactions={serializedTxs} />
+
+        {isSavings && (
+          <div className="px-4 mt-2">
+            <CancelSavingsButton
+              accountId={account.accountId}
+              balance={account.balance.toFixed(0)}
+              maturityDate={account.contract?.maturityDate ?? null}
+              depositAccounts={depositAccounts}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

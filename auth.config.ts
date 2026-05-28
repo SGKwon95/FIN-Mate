@@ -9,15 +9,17 @@ export const authConfig = {
   callbacks: {
     jwt({ token, user }) {
       if (user) {
-        const u = user as { partyId?: string; isEmployee?: boolean }
+        const u = user as { partyId?: string; isEmployee?: boolean; sessionToken?: string }
         token.partyId = u.partyId
         token.isEmployee = u.isEmployee ?? false
+        token.sessionToken = u.sessionToken
       }
       return token
     },
     session({ session, token }) {
       session.user.partyId = token.partyId as string
       session.user.isEmployee = token.isEmployee as boolean
+      session.user.sessionToken = token.sessionToken as string
       return session
     },
   },

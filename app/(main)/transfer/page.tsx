@@ -12,10 +12,11 @@ export default async function TransferPage() {
 
   const accounts = await prisma.account.findMany({
     where: {
-      partyId:       session.user.partyId,
-      accountStatus: "ACTIVE",
-      isHidden:      false,
-      isLocked:      false,
+      partyId:        session.user.partyId,
+      accountStatus:  "ACTIVE",
+      isHidden:       false,
+      isLocked:       false,
+      accountPurpose: { notIn: ["SAVINGS", "TIME_DEPOSIT"] },
     },
     orderBy: { displayOrder: "asc" },
     select: {

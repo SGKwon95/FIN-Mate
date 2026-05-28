@@ -70,6 +70,7 @@ export default async function SubscribePage({
         maxAmount: Number(product.depositDetail!.maxAmount ?? 1_000_000_000),
         minPeriodMonths: product.depositDetail!.minPeriodMonths ?? 6,
         maxPeriodMonths: product.depositDetail!.maxPeriodMonths ?? 36,
+        termsUrl: `${process.env.MINIO_PUBLIC_URL}/${process.env.MINIO_BUCKET}/terms/time-deposit.html`,
       }}
       accounts={serialized}
     />

@@ -25,6 +25,7 @@ type Props = {
   balance: string;
   openedDate: string;
   lastTransactionAt: string | null;
+  productName: string | null;
 };
 
 export default function AccountCard({
@@ -35,6 +36,7 @@ export default function AccountCard({
   balance,
   openedDate,
   lastTransactionAt,
+  productName,
 }: Props) {
   const typeLabel = ACCOUNT_TYPE_LABEL[accountType] ?? accountType;
   const purposeLabel = accountPurpose
@@ -60,6 +62,11 @@ export default function AccountCard({
         </div>
         <ChevronRight className="w-4 h-4 text-kb-gray-border group-hover:text-kb-gray transition-colors shrink-0" />
       </div>
+
+      {/* 상품명 */}
+      {productName && (
+        <p className="text-sm font-semibold text-kb-navy mb-1">{productName}</p>
+      )}
 
       {/* 계좌번호 */}
       <p className="text-sm font-mono text-kb-gray tracking-wide mb-3">
