@@ -4,6 +4,7 @@ import { useChat } from '@ai-sdk/react'
 import { useRef, useEffect, useState } from 'react'
 import { Send, Bot, User, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 
 const MODELS = [
@@ -128,6 +129,7 @@ export default function ChatInterface({
             >
               {m.role === 'assistant' ? (
                 <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
                   components={{
                     p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
                     strong: ({ children }) => (
@@ -135,6 +137,9 @@ export default function ChatInterface({
                     ),
                     ul: ({ children }) => (
                       <ul className="mt-1.5 space-y-1 list-none">{children}</ul>
+                    ),
+                    ol: ({ children }) => (
+                      <ol className="mt-1.5 space-y-1 list-decimal list-inside">{children}</ol>
                     ),
                     li: ({ children }) => (
                       <li className="flex gap-1.5">
@@ -148,10 +153,33 @@ export default function ChatInterface({
                     h2: ({ children }) => (
                       <h2 className="font-semibold text-sm mb-1.5 mt-1">{children}</h2>
                     ),
+                    h3: ({ children }) => (
+                      <h3 className="font-semibold text-xs mb-1 mt-1 text-kb-gray">{children}</h3>
+                    ),
                     code: ({ children }) => (
                       <code className="bg-kb-gray-light px-1 py-0.5 rounded text-xs font-mono">
                         {children}
                       </code>
+                    ),
+                    table: ({ children }) => (
+                      <div className="overflow-x-auto my-2">
+                        <table className="w-full text-xs border-collapse">{children}</table>
+                      </div>
+                    ),
+                    thead: ({ children }) => (
+                      <thead className="bg-kb-navy text-white">{children}</thead>
+                    ),
+                    tbody: ({ children }) => (
+                      <tbody className="divide-y divide-kb-gray-border">{children}</tbody>
+                    ),
+                    tr: ({ children }) => <tr className="even:bg-kb-gray-light">{children}</tr>,
+                    th: ({ children }) => (
+                      <th className="px-2 py-1.5 text-left font-semibold whitespace-nowrap">
+                        {children}
+                      </th>
+                    ),
+                    td: ({ children }) => (
+                      <td className="px-2 py-1.5 whitespace-nowrap">{children}</td>
                     ),
                   }}
                 >

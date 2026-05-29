@@ -442,6 +442,8 @@ model DepositDetail {
 model LoanDetail {
   loanDetailId            String   @id @default(dbgenerated("gen_random_uuid()")) @map("loan_detail_id") @db.Uuid
   productId               String   @unique @map("product_id") @db.Uuid
+  loanType                String   @default("CREDIT") @map("loan_type") @db.VarChar(20)
+  // MORTGAGE(담보대출) | JEONSE(전세자금) | CREDIT(신용대출) | OVERDRAFT(마이너스통장)
   baseRateType            String   @map("base_rate_type") @db.VarChar(20)
   interestType            String   @map("interest_type") @db.VarChar(10)
   maxLtvRatio             Decimal? @map("max_ltv_ratio") @db.Decimal(5, 4)
