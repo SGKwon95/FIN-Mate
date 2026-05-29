@@ -16,8 +16,13 @@ export async function POST(
 
   const { id } = await params
 
+  const isEmployee = session.user.isEmployee === true
   const application = await prisma.loanApplication.findUnique({
-    where: { applicationId: id, partyId: session.user.partyId },
+    where: {
+      applicationId: id,
+      // 직원은 모든 신청건 심사 가능, 고객은 본인 것만
+      ...(isEmployee ? {} : { partyId: session.user.partyId }),
+    },
     include: {
       product: {
         include: {
