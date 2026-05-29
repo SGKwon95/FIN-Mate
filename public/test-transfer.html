@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>타행이체 테스트 콘솔</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e1e4e8; min-height: 100vh; }
+
+    .header {
+      background: #161b22; border-bottom: 1px solid #30363d;
+      padding: 14px 24px; display: flex; align-items: center; gap: 12px;
+    }
+    .header h1 { font-size: 17px; font-weight: 600; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: calc(100vh - 53px);
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: #161b22; border-right: 1px solid #30363d;
+      padding: 20px 14px; overflow-y: auto;
+    }
+    .sidebar-title {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      color: #8b949e; letter-spacing: 0.8px; margin-bottom: 10px;
+    }
+    .sidebar-hint { font-size: 11px; color: #484f58; margin-bottom: 10px; }
+
+    .seed-card {
+      background: #21262d; border: 1px solid #30363d; border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 7px; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .seed-card:hover { border-color: #58a6ff; background: #1c2128; }
+    .seed-card.active-from { border-color: #56d364; background: #0d2a14; }
+    .seed-card .s-name { font-size: 13px; font-weight: 600; }
+    .seed-card .s-num  { font-size: 11px; color: #8b949e; font-family: monospace; margin-top: 2px; }
+    .seed-card .s-bank { font-size: 11px; color: #58a6ff; margin-top: 2px; }
+
+    .topic-list { font-size: 11px; color: #8b949e; line-height: 2; }
+    .topic-arrow { color: #484f58; font-size: 10px; padding-left: 8px; }
+
+    /* ── Main ── */
+    .main { padding: 22px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+
+    .card {
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 12px; padding: 18px 20px;
+    }
+    .card-title {
+      font-size: 13px; font-weight: 600; color: #e1e4e8;
+      margin-bottom: 14px; padding-bottom: 10px;
+      border-bottom: 1px solid #21262d;
+    }
+
+    /* ── Direction Tabs ── */
+    .dir-tabs {
+      display: flex; gap: 0; margin-bottom: 16px;
+      background: #0d1117; border: 1px solid #30363d; border-radius: 8px; overflow: hidden;
+    }
+    .dir-tab {
+      flex: 1; padding: 8px 0; background: none; border: none;
+      font-size: 13px; font-weight: 600; color: #8b949e; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .dir-tab:hover { color: #e1e4e8; background: #161b22; }
+    .dir-tab.active.out { color: #f78166; background: #2a1a1a; }
+    .dir-tab.active.in  { color: #56d364; background: #0d2a14; }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .fg { display: flex; flex-direction: column; gap: 5px; }
+    .fg.full { grid-column: 1 / -1; }
+    label { font-size: 11px; color: #8b949e; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+    select, input[type=text], input[type=number] {
+      background: #0d1117; border: 1px solid #30363d; border-radius: 7px;
+      padding: 8px 11px; color: #e1e4e8; font-size: 13px; width: 100%;
+      transition: border-color 0.15s;
+    }
+    select:focus, input:focus {
+      outline: none; border-color: #58a6ff;
+      box-shadow: 0 0 0 3px rgba(88,166,255,0.1);
+    }
+    input[readonly] { color: #56d364; cursor: default; }
+
+    .verify-row { display: flex; gap: 7px; }
+    .verify-row input { flex: 1; }
+
+    .btn {
+      padding: 8px 14px; border-radius: 7px; border: none;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-sm      { padding: 6px 12px; font-size: 12px; }
+    .btn-green   { background: #238636; color: #fff; }
+    .btn-green:hover { background: #2ea043; }
+    .btn-cyan    { background: #0e7490; color: #fff; }
+    .btn-cyan:hover  { background: #0891b2; }
+    .btn-blue    { background: #1f6feb; color: #fff; }
+    .btn-blue:hover  { background: #388bfd; }
+    .btn-ghost   { background: #21262d; color: #e1e4e8; border: 1px solid #30363d; }
+    .btn-ghost:hover { background: #30363d; }
+    .btn-full    { width: 100%; padding: 11px; font-size: 14px; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .holder-ok {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #0d419d; border: 1px solid #1f6feb;
+      border-radius: 6px; padding: 6px 12px;
+      font-size: 12px; color: #79c0ff;
+    }
+    .holder-ok::before { content: '✓'; color: #56d364; font-weight: 700; }
+
+    .acct-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #0d2a14; border: 1px solid #238636;
+      border-radius: 6px; padding: 6px 12px;
+      font-size: 12px; color: #56d364; font-family: monospace;
+    }
+
+    .amount-btns { display: flex; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
+
+    /* Result */
+    .result-inner {
+      background: #0d1117; border: 1px solid #30363d;
+      border-radius: 9px; padding: 14px;
+    }
+    .tx-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 7px 0; border-bottom: 1px solid #21262d; font-size: 13px;
+    }
+    .tx-row:last-child { border-bottom: none; }
+    .tx-label { color: #8b949e; }
+    .tx-value { font-family: monospace; font-weight: 500; }
+
+    .st-PENDING   { color: #e3b341; }
+    .st-COMPLETED { color: #56d364; }
+    .st-FAILED    { color: #f85149; }
+    .st-CANCELLED { color: #8b949e; }
+
+    .spin {
+      display: inline-block; width: 11px; height: 11px;
+      border: 2px solid #e3b341; border-top-color: transparent;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      vertical-align: middle; margin-right: 5px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Log */
+    .log {
+      background: #0d1117; border: 1px solid #30363d;
+      border-radius: 8px; padding: 10px 12px;
+      max-height: 190px; overflow-y: auto;
+      font-family: 'Consolas', monospace; font-size: 12px;
+    }
+    .le { padding: 1px 0; }
+    .lt { color: #484f58; margin-right: 8px; }
+    .li { color: #79c0ff; }
+    .ls { color: #56d364; }
+    .lw { color: #e3b341; }
+    .ler { color: #f85149; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <span style="font-size:18px;">🏦</span>
+  <h1>타행이체 테스트 콘솔</h1>
+  <span style="flex:1"></span>
+  <div style="display:flex;align-items:center;gap:8px">
+    <span id="kafkaDot" style="width:9px;height:9px;border-radius:50%;background:#484f58;flex-shrink:0;transition:background 0.3s"></span>
+    <span id="kafkaLabel" style="font-size:12px;color:#8b949e;white-space:nowrap">Kafka 확인 중...</span>
+    <button id="kafkaBtn" class="btn btn-ghost btn-sm" onclick="toggleKafka()" disabled>시작</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-title">B은행 테스트 계좌</div>
+    <div class="sidebar-hint" id="sidebarHint">클릭하면 수신계좌 자동입력</div>
+
+    <div class="seed-card" id="card-0" onclick="sidebarFill('3020000000001','088','김신한')">
+      <div class="s-name">김신한</div>
+      <div class="s-num">3020000000001</div>
+      <div class="s-bank">신한은행 (088) · 잔액 500만</div>
+    </div>
+    <div class="seed-card" id="card-1" onclick="sidebarFill('3020000000002','088','이신한')">
+      <div class="s-name">이신한</div>
+      <div class="s-num">3020000000002</div>
+      <div class="s-bank">신한은행 (088) · 잔액 200만</div>
+    </div>
+    <div class="seed-card" id="card-2" onclick="sidebarFill('0200000000001','020','박우리')">
+      <div class="s-name">박우리</div>
+      <div class="s-num">0200000000001</div>
+      <div class="s-bank">우리은행 (020) · 잔액 350만</div>
+    </div>
+    <div class="seed-card" id="card-3" onclick="sidebarFill('0200000000002','020','최우리')">
+      <div class="s-name">최우리</div>
+      <div class="s-num">0200000000002</div>
+      <div class="s-bank">우리은행 (020) · 잔액 120만</div>
+    </div>
+    <div class="seed-card" id="card-4" onclick="sidebarFill('0880000000001','081','정하나')">
+      <div class="s-name">정하나</div>
+      <div class="s-num">0880000000001</div>
+      <div class="s-bank">KEB하나 (081) · 잔액 800만</div>
+    </div>
+    <div class="seed-card" id="card-5" onclick="sidebarFill('0880000000002','081','강하나')">
+      <div class="s-name">강하나</div>
+      <div class="s-num">0880000000002</div>
+      <div class="s-bank">KEB하나 (081) · 잔액 50만</div>
+    </div>
+
+    <div class="sidebar-title" style="margin-top:20px;">Kafka 흐름</div>
+    <div class="topic-list" id="topicOut">
+      <div>① TRANSFER_REQUESTS</div>
+      <div class="topic-arrow">↓ Gateway 라우팅</div>
+      <div>② ROUTED_REQUESTS</div>
+      <div class="topic-arrow">↓ B은행 처리</div>
+      <div>③ B_RESULTS</div>
+      <div class="topic-arrow">↓ 정산</div>
+      <div>④ TRANSFER_SETTLEMENTS</div>
+    </div>
+    <div class="topic-list" id="topicIn" style="display:none">
+      <div>① TRANSFER_REQUESTS</div>
+      <div class="topic-arrow">↓ Gateway 라우팅 (004)</div>
+      <div>② INBOUND_REQUESTS</div>
+      <div class="topic-arrow">↓ FIN-Mate 입금 처리</div>
+      <div>③ INBOUND_RESULTS</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Transfer Form -->
+    <div class="card">
+      <div class="card-title">이체 설정</div>
+
+      <!-- Direction Toggle -->
+      <div class="dir-tabs">
+        <button id="tabOut" class="dir-tab active out" onclick="setDir('out')">↑ 출금 · FIN-Mate → B행</button>
+        <button id="tabIn"  class="dir-tab in"         onclick="setDir('in')">↓ 입금 · B행 → FIN-Mate</button>
+      </div>
+
+      <!-- ── 출금 폼 (A→B) ── -->
+      <div id="outForm">
+        <div class="grid2">
+          <div class="fg">
+            <label>출금 계좌 (FIN-Mate)</label>
+            <select id="fromAccount" onchange="updateBalance()">
+              <option>로딩 중...</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>현재 잔액</label>
+            <input type="text" id="balance" readonly placeholder="-">
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="fg">
+            <label>수신 은행</label>
+            <select id="bankCode" onchange="clearVerify()">
+              <option>로딩 중...</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>수신 계좌번호</label>
+            <div class="verify-row">
+              <input type="text" id="toNumber" placeholder="숫자만 입력" oninput="clearVerify()">
+              <button class="btn btn-blue" onclick="doVerify()">조회</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="holderWrap" style="margin-bottom:12px;display:none;">
+          <span class="holder-ok" id="holderText"></span>
+        </div>
+
+        <div class="grid2">
+          <div class="fg">
+            <label>이체 금액 (원)</label>
+            <input type="number" id="amount" placeholder="0" min="1" step="1000" oninput="checkReady()">
+          </div>
+          <div class="fg">
+            <label>메모 (선택)</label>
+            <input type="text" id="memo" placeholder="입금자명 등">
+          </div>
+        </div>
+
+        <div class="amount-btns">
+          <button class="btn btn-ghost btn-sm" onclick="addAmount(10000)">+1만</button>
+          <button class="btn btn-ghost btn-sm" onclick="addAmount(50000)">+5만</button>
+          <button class="btn btn-ghost btn-sm" onclick="addAmount(100000)">+10만</button>
+          <button class="btn btn-ghost btn-sm" onclick="addAmount(500000)">+50만</button>
+          <button class="btn btn-ghost btn-sm" onclick="setAmount(1000000)">100만</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearAmount()">지우기</button>
+        </div>
+      </div>
+
+      <!-- ── 입금 폼 (B→A) ── -->
+      <div id="inForm" style="display:none">
+        <div class="grid2">
+          <div class="fg">
+            <label>송금 은행 (B은행)</label>
+            <select id="inBankCode" onchange="onInBankChange()">
+              <option>로딩 중...</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>송금 계좌번호</label>
+            <input type="text" id="inFromNumber" placeholder="3020000000001" oninput="checkReady()">
+          </div>
+        </div>
+
+        <div class="grid2" style="margin-bottom:12px">
+          <div class="fg">
+            <label>송금인 이름</label>
+            <input type="text" id="inFromName" placeholder="김신한" oninput="checkReady()">
+          </div>
+          <div class="fg" style="justify-content:flex-end">
+            <label style="visibility:hidden">_</label>
+            <div id="inFromBadge" style="display:none">
+              <span class="acct-badge" id="inFromBadgeText"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="fg">
+            <label>수신 계좌 (FIN-Mate)</label>
+            <select id="inToAccount" onchange="updateInBalance()">
+              <option>로딩 중...</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>현재 잔액</label>
+            <input type="text" id="inBalance" readonly placeholder="-">
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="fg">
+            <label>입금 금액 (원)</label>
+            <input type="number" id="inAmount" placeholder="0" min="1" step="1000" oninput="checkReady()">
+          </div>
+          <div class="fg">
+            <label>메모 (선택)</label>
+            <input type="text" id="inMemo" placeholder="송금인 메모">
+          </div>
+        </div>
+
+        <div class="amount-btns">
+          <button class="btn btn-ghost btn-sm" onclick="addAmount(10000)">+1만</button>
+          <button class="btn btn-ghost btn-sm" onclick="addAmount(50000)">+5만</button>
+          <button class="btn btn-ghost btn-sm" onclick="addAmount(100000)">+10만</button>
+          <button class="btn btn-ghost btn-sm" onclick="addAmount(500000)">+50만</button>
+          <button class="btn btn-ghost btn-sm" onclick="setAmount(1000000)">100만</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearAmount()">지우기</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-full btn-green" id="transferBtn" onclick="handleTransfer()" disabled>
+      이체 실행
+    </button>
+
+    <!-- Result -->
+    <div class="card" id="resultSection" style="display:none;">
+      <div class="card-title">이체 결과</div>
+      <div class="result-inner">
+        <div class="tx-row">
+          <span class="tx-label">Transaction ID</span>
+          <span class="tx-value" id="rTxId">-</span>
+        </div>
+        <div class="tx-row">
+          <span class="tx-label">상태</span>
+          <span class="tx-value" id="rStatus">-</span>
+        </div>
+        <div class="tx-row">
+          <span class="tx-label">금액</span>
+          <span class="tx-value" id="rAmount">-</span>
+        </div>
+        <div class="tx-row">
+          <span class="tx-label">이체 후 잔액</span>
+          <span class="tx-value" id="rBalance">-</span>
+        </div>
+        <div class="tx-row">
+          <span class="tx-label">완료 시각</span>
+          <span class="tx-value" id="rTime">-</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="card-title" style="margin-bottom:0;padding-bottom:0;border:none;">이벤트 로그</div>
+        <button class="btn btn-ghost btn-sm" onclick="clearLog()">지우기</button>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  let accounts = []
+  let verifiedHolder = ''
+  let pollTimer = null
+  let dir = 'out'           // 'out' | 'in'
+  let activeCardIdx = -1    // 사이드바 선택된 카드 인덱스
+
+  /* ── Kafka 제어 ── */
+  function setKafkaUI(running) {
+    document.getElementById('kafkaDot').style.background = running ? '#56d364' : '#f85149'
+    document.getElementById('kafkaLabel').textContent    = running ? 'Kafka 실행 중' : 'Kafka 중단됨'
+    const btn = document.getElementById('kafkaBtn')
+    btn.textContent = running ? '중단' : '시작'
+    btn.className   = 'btn btn-sm ' + (running ? 'btn-ghost' : 'btn-green')
+    btn.disabled    = false
+  }
+
+  async function pollKafkaStatus() {
+    try {
+      const { running } = await fetch('/api/test/kafka').then(r => r.json())
+      setKafkaUI(running)
+    } catch { /* 서버 미기동 */ }
+  }
+
+  async function toggleKafka() {
+    const btn = document.getElementById('kafkaBtn')
+    const starting = btn.textContent === '시작'
+    btn.disabled = true
+    btn.textContent = starting ? '시작 중...' : '중단 중...'
+
+    const res  = await fetch('/api/test/kafka', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: starting ? 'start' : 'stop' }),
+    })
+    const data = await res.json()
+
+    if (!data.ok) { log(`Kafka: ${data.message}`, 'er'); await pollKafkaStatus(); return }
+
+    if (starting) {
+      log(`Kafka 워커 시작 중... (pid=${data.pid})`)
+      // 실제로 프로세스가 살아있는지 1초 후 확인
+      setTimeout(pollKafkaStatus, 1000)
+    } else {
+      log('Kafka 워커 중단 요청', 'w')
+      setTimeout(pollKafkaStatus, 1500)
+    }
+  }
+
+  // 5초마다 상태 자동 갱신
+  pollKafkaStatus()
+  setInterval(pollKafkaStatus, 5000)
+
+  /* ── 로그 ── */
+  function log(msg, type = 'i') {
+    const el = document.getElementById('log')
+    const t = new Date().toLocaleTimeString('ko-KR', { hour12: false })
+    const div = document.createElement('div')
+    div.className = 'le'
+    div.innerHTML = `<span class="lt">${t}</span><span class="l${type}">${msg}</span>`
+    el.appendChild(div)
+    el.scrollTop = el.scrollHeight
+  }
+  function clearLog() { document.getElementById('log').innerHTML = '' }
+
+  /* ── 포맷 ── */
+  function krw(n) { return Number(n).toLocaleString('ko-KR') }
+
+  /* ── 방향 전환 ── */
+  function setDir(d) {
+    dir = d
+    document.getElementById('tabOut').className = 'dir-tab out' + (d === 'out' ? ' active' : '')
+    document.getElementById('tabIn').className  = 'dir-tab in'  + (d === 'in'  ? ' active' : '')
+    document.getElementById('outForm').style.display = d === 'out' ? '' : 'none'
+    document.getElementById('inForm').style.display  = d === 'in'  ? '' : 'none'
+    document.getElementById('topicOut').style.display = d === 'out' ? '' : 'none'
+    document.getElementById('topicIn').style.display  = d === 'in'  ? '' : 'none'
+    document.getElementById('sidebarHint').textContent =
+      d === 'out' ? '클릭하면 수신계좌 자동입력' : '클릭하면 송금계좌 자동입력'
+
+    const btn = document.getElementById('transferBtn')
+    btn.className = 'btn btn-full btn-' + (d === 'out' ? 'green' : 'cyan')
+    btn.textContent = d === 'out' ? '이체 실행' : '입금 시뮬레이션'
+
+    // 카드 active 상태 초기화
+    setActiveCard(-1)
+    verifiedHolder = ''
+    document.getElementById('holderWrap').style.display = 'none'
+    checkReady()
+    if (d === 'in') updateInBalance()
+  }
+
+  /* ── 사이드바 카드 선택 ── */
+  function setActiveCard(idx) {
+    if (activeCardIdx >= 0) {
+      const prev = document.getElementById('card-' + activeCardIdx)
+      if (prev) prev.classList.remove('active-from')
+    }
+    activeCardIdx = idx
+    if (idx >= 0) {
+      const cur = document.getElementById('card-' + idx)
+      if (cur) cur.classList.add('active-from')
+    }
+  }
+
+  // 사이드바 카드 onclick — 방향에 따라 분기
+  const CARDS = [
+    { num: '3020000000001', bank: '088', name: '김신한' },
+    { num: '3020000000002', bank: '088', name: '이신한' },
+    { num: '0200000000001', bank: '020', name: '박우리' },
+    { num: '0200000000002', bank: '020', name: '최우리' },
+    { num: '0880000000001', bank: '081', name: '정하나' },
+    { num: '0880000000002', bank: '081', name: '강하나' },
+  ]
+  function sidebarFill(num, bank, name) {
+    const idx = CARDS.findIndex(c => c.num === num)
+    if (dir === 'out') {
+      fillTo(num, bank, name)
+      setActiveCard(-1)
+    } else {
+      fillFrom(num, bank, name, idx)
+    }
+  }
+
+  /* ── 출금(outbound): 수신계좌 자동입력 ── */
+  function fillTo(num, bank, name) {
+    document.getElementById('toNumber').value = num
+    const bankSel = document.getElementById('bankCode')
+    // 은행코드 매칭 (302 → 302 옵션이 없으면 가장 가까운 것)
+    const opt = Array.from(bankSel.options).find(o => o.value === bank)
+    if (opt) bankSel.value = bank
+    clearVerify()
+    log(`자동입력: ${name}  ${num}  (${bank})`)
+  }
+
+  /* ── 입금(inbound): 송금계좌 자동입력 ── */
+  function fillFrom(num, bank, name, idx) {
+    document.getElementById('inFromNumber').value = num
+    document.getElementById('inFromName').value   = name
+    const bankSel = document.getElementById('inBankCode')
+    const opt = Array.from(bankSel.options).find(o => o.value === bank)
+    if (opt) bankSel.value = bank
+    onInBankChange()
+    setActiveCard(idx)
+    const badge = document.getElementById('inFromBadge')
+    document.getElementById('inFromBadgeText').textContent = `${num}  ${name}`
+    badge.style.display = 'block'
+    log(`송금인 자동입력: ${name}  ${num}  (${bank})`)
+    checkReady()
+  }
+
+  function onInBankChange() {
+    checkReady()
+  }
+
+  /* ── 금액 버튼 ── */
+  function getAmountEl() {
+    return document.getElementById(dir === 'in' ? 'inAmount' : 'amount')
+  }
+  function addAmount(v) {
+    const el = getAmountEl()
+    el.value = (parseInt(el.value || '0') + v).toString()
+    checkReady()
+  }
+  function setAmount(v) {
+    getAmountEl().value = v
+    checkReady()
+  }
+  function clearAmount() {
+    getAmountEl().value = ''
+    checkReady()
+  }
+
+  /* ── 계좌 조회 초기화 ── */
+  function clearVerify() {
+    verifiedHolder = ''
+    document.getElementById('holderWrap').style.display = 'none'
+    document.getElementById('transferBtn').disabled = true
+  }
+
+  function checkReady() {
+    let ok = false
+    if (dir === 'out') {
+      const amt = parseInt(document.getElementById('amount').value || '0')
+      ok = !!(verifiedHolder && amt > 0)
+    } else {
+      const num  = document.getElementById('inFromNumber').value.trim()
+      const name = document.getElementById('inFromName').value.trim()
+      const to   = document.getElementById('inToAccount').value
+      const amt  = parseInt(document.getElementById('inAmount').value || '0')
+      ok = !!(num && name && to && amt > 0)
+    }
+    document.getElementById('transferBtn').disabled = !ok
+  }
+
+  /* ── 초기화 ── */
+  async function init() {
+    log('초기화 중...')
+
+    const [banksRes, accRes] = await Promise.all([
+      fetch('/api/test/transfer?action=banks'),
+      fetch('/api/test/transfer?action=accounts'),
+    ])
+
+    const { banks } = await banksRes.json()
+
+    // 출금 은행 셀렉트 (004 제외)
+    const bankSel = document.getElementById('bankCode')
+    bankSel.innerHTML = ''
+    for (const b of banks) {
+      if (b.code === '004') continue
+      const o = document.createElement('option')
+      o.value = b.code
+      o.textContent = `${b.codeName} (${b.code})`
+      bankSel.appendChild(o)
+    }
+
+    // 입금 은행 셀렉트 (004 제외, 동일)
+    const inBankSel = document.getElementById('inBankCode')
+    inBankSel.innerHTML = ''
+    for (const b of banks) {
+      if (b.code === '004') continue
+      const o = document.createElement('option')
+      o.value = b.code
+      o.textContent = `${b.codeName} (${b.code})`
+      inBankSel.appendChild(o)
+    }
+
+    const { accounts: accs } = await accRes.json()
+    accounts = accs
+    const labels = { GENERAL:'입출금', SALARY:'급여', SAVINGS:'적금', TIME_DEPOSIT:'정기예금' }
+
+    // 출금 계좌 셀렉트
+    const fromSel = document.getElementById('fromAccount')
+    fromSel.innerHTML = ''
+    for (const a of accs) {
+      const o = document.createElement('option')
+      o.value = a.accountId
+      o.textContent = `${labels[a.accountPurpose] ?? a.accountPurpose}  ${a.accountNumber}  (${krw(a.balance)}원)`
+      fromSel.appendChild(o)
+    }
+    updateBalance()
+
+    // 입금 수신 계좌 셀렉트
+    const inToSel = document.getElementById('inToAccount')
+    inToSel.innerHTML = ''
+    for (const a of accs) {
+      const o = document.createElement('option')
+      o.value = a.accountId
+      o.dataset.number = a.accountNumber
+      o.textContent = `${labels[a.accountPurpose] ?? a.accountPurpose}  ${a.accountNumber}  (${krw(a.balance)}원)`
+      inToSel.appendChild(o)
+    }
+    updateInBalance()
+
+    log(`계좌 ${accs.length}개 로드 완료`, 's')
+  }
+
+  function updateBalance() {
+    const id = document.getElementById('fromAccount').value
+    const acc = accounts.find(a => a.accountId === id)
+    document.getElementById('balance').value = acc ? `${krw(acc.balance)}원` : '-'
+  }
+
+  function updateInBalance() {
+    const id = document.getElementById('inToAccount').value
+    const acc = accounts.find(a => a.accountId === id)
+    document.getElementById('inBalance').value = acc ? `${krw(acc.balance)}원` : '-'
+    checkReady()
+  }
+
+  /* ── 계좌 조회 (출금) ── */
+  async function doVerify() {
+    const num = document.getElementById('toNumber').value.replace(/-/g, '').trim()
+    const bank = document.getElementById('bankCode').value
+    if (!num) { log('계좌번호를 입력하세요', 'w'); return }
+
+    log(`계좌 조회: ${num}  은행코드 ${bank}`)
+    const res = await fetch('/api/test/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'verify', accountNumber: num, bankCode: bank }),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      verifiedHolder = data.holderName
+      document.getElementById('holderText').textContent = data.holderName
+      document.getElementById('holderWrap').style.display = 'block'
+      log(`예금주 확인: ${data.holderName}`, 's')
+      checkReady()
+    } else {
+      log(`조회 실패: ${data.message}`, 'er')
+      clearVerify()
+    }
+  }
+
+  /* ── 이체 실행 (방향에 따라 분기) ── */
+  function handleTransfer() {
+    if (dir === 'out') doOutbound()
+    else               doInbound()
+  }
+
+  /* ── 출금 이체 (A→B) ── */
+  async function doOutbound() {
+    const fromAccountId   = document.getElementById('fromAccount').value
+    const toAccountNumber = document.getElementById('toNumber').value.replace(/-/g, '')
+    const bankCode        = document.getElementById('bankCode').value
+    const amount          = parseInt(document.getElementById('amount').value, 10)
+    const memo            = document.getElementById('memo').value.trim()
+    if (!verifiedHolder || !amount) return
+
+    const btn = document.getElementById('transferBtn')
+    btn.disabled = true
+    btn.textContent = '처리 중...'
+    log(`이체 요청: ${verifiedHolder}  ${krw(amount)}원  →  ${toAccountNumber}`)
+
+    const res = await fetch('/api/test/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'transfer',
+        fromAccountId, toAccountNumber,
+        toName: verifiedHolder,
+        bankCode, amount,
+        memo: memo || undefined,
+      }),
+    })
+    const data = await res.json()
+    btn.textContent = '이체 실행'
+
+    if (data.ok) {
+      log(`요청 완료: txId=${data.transactionId}  status=${data.status}`, 's')
+      showResult(data.transactionId, data.status, amount)
+      if (data.status === 'PENDING') {
+        startOutboundPoll(data.transactionId)
+      } else {
+        btn.disabled = false
+        refreshAccounts()
+      }
+    } else {
+      log(`이체 실패: ${data.message}`, 'er')
+      btn.disabled = false
+    }
+  }
+
+  /* ── 입금 시뮬레이션 (B→A) ── */
+  async function doInbound() {
+    const toAccountId     = document.getElementById('inToAccount').value
+    const toAccOpt        = document.querySelector(`#inToAccount option[value="${toAccountId}"]`)
+    const toAccountNumber = (toAccOpt?.dataset?.number ?? '').replace(/-/g, '')
+    const amount          = parseInt(document.getElementById('inAmount').value, 10)
+    const fromBankCode    = document.getElementById('inBankCode').value
+    const fromAccNumber   = document.getElementById('inFromNumber').value.trim()
+    const fromPartyName   = document.getElementById('inFromName').value.trim()
+    const memo            = document.getElementById('inMemo').value.trim()
+
+    if (!fromAccNumber || !fromPartyName || !toAccountNumber || !amount) return
+
+    const beforeBalance = Number(accounts.find(a => a.accountId === toAccountId)?.balance ?? 0)
+
+    const btn = document.getElementById('transferBtn')
+    btn.disabled = true
+    btn.textContent = '처리 중...'
+    log(`입금 시뮬레이션: ${fromPartyName} (${fromBankCode})  ${krw(amount)}원  →  ${toAccountNumber}`)
+
+    const res = await fetch('/api/test/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'simulate-inbound',
+        toAccountNumber,
+        amount,
+        fromBankCode,
+        fromAccountNumber: fromAccNumber,
+        fromPartyName,
+        memo: memo || undefined,
+      }),
+    })
+    const data = await res.json()
+    btn.textContent = '입금 시뮬레이션'
+
+    if (data.ok) {
+      log(`Kafka 발행 완료: txNo=${data.transactionNo}`, 's')
+      showResult(data.transactionNo, 'PENDING', amount)
+      startInboundPoll(toAccountId, amount, beforeBalance)
+    } else {
+      log(`시뮬레이션 실패: ${data.message}`, 'er')
+      btn.disabled = false
+    }
+  }
+
+  /* ── 결과 표시 ── */
+  function showResult(txId, status, amount) {
+    document.getElementById('resultSection').style.display = 'block'
+    document.getElementById('rTxId').textContent = txId
+    document.getElementById('rAmount').textContent = `${krw(amount)}원`
+    document.getElementById('rBalance').textContent = '-'
+    document.getElementById('rTime').textContent = '-'
+    setStatus(status)
+    document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const STATUS_LABEL = { PENDING:'처리 중', COMPLETED:'완료', FAILED:'실패', CANCELLED:'취소' }
+  const STATUS_ICON  = { PENDING:'⏳', COMPLETED:'✅', FAILED:'❌', CANCELLED:'🚫' }
+
+  function setStatus(s) {
+    const el = document.getElementById('rStatus')
+    el.innerHTML = s === 'PENDING'
+      ? `<span class="spin"></span><span class="st-PENDING">${STATUS_LABEL[s]}</span>`
+      : `<span class="st-${s}">${STATUS_ICON[s] ?? ''} ${STATUS_LABEL[s] ?? s}</span>`
+  }
+
+  /* ── 출금 PENDING 폴링 (DB transactionId 기반) ── */
+  function startOutboundPoll(txId) {
+    if (pollTimer) clearInterval(pollTimer)
+    let n = 0
+    pollTimer = setInterval(async () => {
+      n++
+      log(`폴링 #${n}: ${txId.slice(0, 8)}...`)
+      const res = await fetch(`/api/test/transfer?action=status&id=${txId}`)
+      const data = await res.json()
+      setStatus(data.transactionStatus)
+
+      if (data.transactionStatus !== 'PENDING') {
+        clearInterval(pollTimer); pollTimer = null
+        document.getElementById('rBalance').textContent =
+          data.balanceAfter ? `${krw(data.balanceAfter)}원` : '-'
+        document.getElementById('rTime').textContent =
+          data.transactedAt ? new Date(data.transactedAt).toLocaleString('ko-KR') : '-'
+        const ok = data.transactionStatus === 'COMPLETED'
+        log(`이체 ${data.transactionStatus} (${n * 2}초 소요)`, ok ? 's' : 'er')
+        document.getElementById('transferBtn').disabled = false
+        refreshAccounts()
+      }
+
+      if (n >= 30) {
+        clearInterval(pollTimer); pollTimer = null
+        log('폴링 타임아웃 (60초) — 수동으로 상태를 확인하세요', 'w')
+        document.getElementById('transferBtn').disabled = false
+      }
+    }, 2000)
+  }
+
+  /* ── 입금 PENDING 폴링 (계좌 잔액 변화 감지) ── */
+  function startInboundPoll(toAccountId, expectedAmount, beforeBalance) {
+    if (pollTimer) clearInterval(pollTimer)
+    let n = 0
+    const startedAt = new Date()
+    pollTimer = setInterval(async () => {
+      n++
+      log(`입금 폴링 #${n}...`)
+      const res = await fetch('/api/test/transfer?action=accounts')
+      if (!res.ok) return
+      const { accounts: accs } = await res.json()
+      accounts = accs
+      updateInBalance()
+
+      const acc = accs.find(a => a.accountId === toAccountId)
+      if (acc && Number(acc.balance) >= beforeBalance + expectedAmount) {
+        clearInterval(pollTimer); pollTimer = null
+        setStatus('COMPLETED')
+        document.getElementById('rBalance').textContent = `${krw(acc.balance)}원`
+        document.getElementById('rTime').textContent = new Date().toLocaleString('ko-KR')
+        log(`입금 완료 (+${krw(expectedAmount)}원, ${n * 2}초 소요)`, 's')
+        document.getElementById('transferBtn').disabled = false
+        refreshAccounts()
+      }
+
+      if (n >= 30) {
+        clearInterval(pollTimer); pollTimer = null
+        log('입금 폴링 타임아웃 (60초) — kafka:inbound 워커 실행 여부를 확인하세요', 'w')
+        document.getElementById('transferBtn').disabled = false
+      }
+    }, 2000)
+  }
+
+  /* ── 잔액 갱신 ── */
+  async function refreshAccounts() {
+    const res = await fetch('/api/test/transfer?action=accounts')
+    if (!res.ok) return
+    const { accounts: accs } = await res.json()
+    accounts = accs
+
+    const labels = { GENERAL:'입출금', SALARY:'급여', SAVINGS:'적금', TIME_DEPOSIT:'정기예금' }
+
+    const fromSel  = document.getElementById('fromAccount')
+    const inToSel  = document.getElementById('inToAccount')
+    const selFrom  = fromSel.value
+    const selInTo  = inToSel.value
+
+    fromSel.innerHTML = ''
+    inToSel.innerHTML = ''
+    for (const a of accs) {
+      const txt = `${labels[a.accountPurpose] ?? a.accountPurpose}  ${a.accountNumber}  (${krw(a.balance)}원)`
+
+      const o1 = document.createElement('option')
+      o1.value = a.accountId
+      o1.textContent = txt
+      if (a.accountId === selFrom) o1.selected = true
+      fromSel.appendChild(o1)
+
+      const o2 = document.createElement('option')
+      o2.value = a.accountId
+      o2.dataset.number = a.accountNumber
+      o2.textContent = txt
+      if (a.accountId === selInTo) o2.selected = true
+      inToSel.appendChild(o2)
+    }
+    updateBalance()
+    updateInBalance()
+    log('잔액 갱신 완료', 's')
+  }
+
+  init()
+</script>
+</body>
+</html>

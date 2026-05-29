@@ -22,6 +22,7 @@ const kafka = new Kafka({
   clientId: 'interbank-simulator',
   brokers:  [process.env.KAFKA_BROKER ?? 'localhost:9092'],
   logLevel: logLevel.WARN,
+  retry: { initialRetryTime: 3000, retries: 60 },
 })
 
 const consumer = kafka.consumer({ groupId: 'interbank-simulator-group' })

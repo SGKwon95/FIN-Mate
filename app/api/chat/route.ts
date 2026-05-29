@@ -4,8 +4,10 @@ import { logger } from '@/lib/logger'
 import { traceable } from 'langsmith/traceable'
 import { retrieveChunks, chunksToContext } from '@/lib/rag'
 import { embedOne } from '@/lib/embeddings'
+import { trace } from '@opentelemetry/api'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
+import { evaluateRag } from '@/lib/rag-eval'
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -177,6 +179,10 @@ ${finalContext}
 ${LANGUAGE_RULE}`
   }
 
+  // RAG 평가용 span ID 캡처 (HTTP instrumentation이 생성한 활성 span)
+  const activeSpan = trace.getActiveSpan()
+  const spanId = activeSpan?.spanContext().spanId
+
   const result = streamText({
     model: lmstudio(modelId ?? 'local-model'),
     system: systemPrompt,
@@ -184,6 +190,46 @@ ${LANGUAGE_RULE}`
     temperature: 0.05,  // 금융 정보는 낮은 temperature로 할루시네이션 억제
     experimental_telemetry: { isEnabled: true, functionId: 'fin-mate-chat' },
   })
+
+  // RAG 평가 → Phoenix 어노테이션 (fire-and-forget, RAG 컨텍스트 사용 시에만)
+  if (contextSource === 'rag' && spanId && userQuestion && finalContext) {
+    result.text.then(async (answer) => {
+      const evalResult = await evaluateRag(userQuestion, finalContext, answer)
+
+      const PHOENIX = process.env.PHOENIX_ENDPOINT ?? 'http://localhost:6006'
+      const annotations = [
+        { name: 'context_relevance', score: evalResult.contextRelevance },
+        { name: 'faithfulness',      score: evalResult.faithfulness },
+        { name: 'answer_relevance',  score: evalResult.answerRelevance },
+      ].map(({ name, score }) => ({
+        span_id:        spanId,
+        name,
+        annotator_kind: 'LLM',
+        identifier:     `${spanId}-${name}`,
+        result: {
+          score,
+          label:       score >= 0.8 ? 'high' : score >= 0.5 ? 'medium' : 'low',
+          explanation: evalResult.reasoning,
+        },
+      }))
+
+      await fetch(`${PHOENIX}/v1/span_annotations?sync=false`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ data: annotations }),
+      })
+
+      logger.info({
+        event: 'rag_eval_annotated',
+        spanId,
+        contextRelevance: evalResult.contextRelevance,
+        faithfulness:     evalResult.faithfulness,
+        answerRelevance:  evalResult.answerRelevance,
+      }, 'Phoenix 어노테이션 전송 완료')
+    }).catch((err) =>
+      logger.warn({ event: 'rag_eval_failed', err: String(err) }, 'RAG 평가 실패'),
+    )
+  }
 
   // LangSmith 트레이스 (fire-and-forget)
   const traceRun = traceable(

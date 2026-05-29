@@ -27,6 +27,7 @@ const kafka = new Kafka({
   clientId: 'fin-mate',
   brokers:  [process.env.KAFKA_BROKER ?? 'localhost:9092'],
   logLevel: logLevel.WARN,
+  retry: { initialRetryTime: 3000, retries: 60 },  // 브로커 미기동 시 ~3분간 재시도
 })
 
 export { kafka }
