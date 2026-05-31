@@ -15,9 +15,11 @@ const MODELS = [
 export default function ChatInterface({
   onClose,
   initialContext,
+  docCategory,
 }: {
   onClose?: () => void
   initialContext?: string
+  docCategory?: 'all' | 'banking' | 'product'
 } = {}) {
   const [modelId, setModelId] = useState('qwen2.5-14b-instruct')
   const [retrievedContext, setRetrievedContext] = useState(initialContext ?? '')
@@ -31,7 +33,7 @@ export default function ChatInterface({
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
     api: '/api/chat',
-    body: { modelId, retrievedContext },
+    body: { modelId, retrievedContext, docCategory },
     streamProtocol: 'text',
   })
 

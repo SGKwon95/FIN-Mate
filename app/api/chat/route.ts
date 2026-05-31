@@ -4,7 +4,7 @@ import { logger } from '@/lib/logger'
 import { traceable } from 'langsmith/traceable'
 import { retrieveChunks, chunksToContext } from '@/lib/rag'
 import { embedOne } from '@/lib/embeddings'
-import { trace } from '@opentelemetry/api'
+import { trace, SpanStatusCode } from '@opentelemetry/api'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { evaluateRag } from '@/lib/rag-eval'
@@ -17,9 +17,20 @@ export async function POST(req: Request) {
     messages,
     modelId,
     retrievedContext: manualContext,  // ChatPopup(MinIO HTML)에서 직접 전달된 컨텍스트
-    docNames,                          // 검색 범위 제한 (e.g. ['KB 정기예금 약관'])
+    docNames: explicitDocNames,        // 검색 범위 제한 (e.g. ['KB 정기예금 약관'])
+    docCategory,                       // 'all' | 'banking' | 'product' — 직원 업로드 문서 카테고리
     useRag = true,                     // RAG 활성화 여부
   } = await req.json()
+
+  // docCategory가 있으면 해당 카테고리의 storedName 목록으로 docNames 결정
+  let docNames: string[] | undefined = explicitDocNames
+  if (docCategory && docCategory !== 'all') {
+    const uploaded = await prisma.document.findMany({
+      where: { entityType: 'EMPLOYEE_UPLOAD', documentType: docCategory },
+      select: { storedName: true },
+    })
+    docNames = uploaded.map(d => d.storedName).filter(Boolean) as string[]
+  }
 
   const userQuestion = messages?.findLast(
     (m: { role: string }) => m.role === 'user',
@@ -183,6 +194,14 @@ ${LANGUAGE_RULE}`
   const activeSpan = trace.getActiveSpan()
   const spanId = activeSpan?.spanContext().spanId
 
+  // Phoenix OpenInference 속성 — kind/status 정상 표시
+  activeSpan?.setAttributes({
+    'openinference.span.kind': 'LLM',
+    'llm.model_name': modelId ?? 'local-model',
+    'input.value': userQuestion,
+    'llm.invocation_parameters': JSON.stringify({ temperature: 0.05 }),
+  })
+
   const result = streamText({
     model: lmstudio(modelId ?? 'local-model'),
     system: systemPrompt,
@@ -194,7 +213,7 @@ ${LANGUAGE_RULE}`
   // RAG 평가 → Phoenix 어노테이션 (fire-and-forget, RAG 컨텍스트 사용 시에만)
   if (contextSource === 'rag' && spanId && userQuestion && finalContext) {
     result.text.then(async (answer) => {
-      const evalResult = await evaluateRag(userQuestion, finalContext, answer)
+      const evalResult = await evaluateRag(userQuestion, finalContext, answer, modelId ?? 'qwen2.5-14b-instruct')
 
       const PHOENIX = process.env.PHOENIX_ENDPOINT ?? 'http://localhost:6006'
       const annotations = [
@@ -247,6 +266,14 @@ ${LANGUAGE_RULE}`
   }).catch((err) =>
     logger.warn({ event: 'langsmith_trace_failed', err: String(err) }, 'LangSmith 트레이스 실패'),
   )
+
+  // Phoenix output.value + status (스트림 완료 후)
+  result.text
+    .then((answer) => {
+      activeSpan?.setAttribute('output.value', answer)
+      activeSpan?.setStatus({ code: SpanStatusCode.OK })
+    })
+    .catch(() => activeSpan?.setStatus({ code: SpanStatusCode.ERROR }))
 
   return result.toTextStreamResponse()
 }

@@ -34,6 +34,7 @@ export async function evaluateRag(
   question: string,
   context: string,
   answer: string,
+  modelId: string,
 ): Promise<RagEvalResult> {
   const judge = createOpenAI({
     baseURL: `${process.env.OLLAMA_BASE_URL ?? 'http://localhost:1234'}/v1`,
@@ -41,7 +42,7 @@ export async function evaluateRag(
   })
 
   const { text } = await generateText({
-    model: judge(process.env.EVAL_MODEL ?? 'local-model'),
+    model: judge(modelId),
     prompt: buildJudgePrompt(question, context, answer),
     temperature: 0,
   })

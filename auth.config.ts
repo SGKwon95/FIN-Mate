@@ -4,6 +4,17 @@ import type { NextAuthConfig } from "next-auth"
 export const authConfig = {
   trustHost: true,
   session: { strategy: "jwt" },
+  cookies: {
+    sessionToken: {
+      options: {
+        httpOnly: true,
+        sameSite: 'lax' as const,
+        path: '/',
+        secure: false,
+        // maxAge 없음 = 브라우저 닫으면 만료되는 세션 쿠키
+      },
+    },
+  },
   pages: { signIn: "/login" },
   providers: [],
   callbacks: {

@@ -189,3 +189,7 @@ export function chunksToContext(chunks: RetrievedChunk[]): string {
     })
     .join('\n\n---\n\n')
 }
+
+export async function deleteChunks(docName: string): Promise<void> {
+  await prisma.documentChunk.deleteMany({ where: { docName } })
+}
