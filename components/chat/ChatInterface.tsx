@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react'
 import { useRef, useEffect, useState } from 'react'
-import { Send, Bot, User, X } from 'lucide-react'
+import { Send, Bot, User, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
@@ -20,6 +20,9 @@ export default function ChatInterface({
 } = {}) {
   const [models, setModels] = useState<Model[]>([])
   const [modelId, setModelId] = useState('')
+  const [feedbackMap, setFeedbackMap]     = useState<Record<string, string>>({})
+  const [feedbackState, setFeedbackState] = useState<Record<string, 'up' | 'down'>>({})
+  const pendingFeedbackIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     fetch('/api/models')
@@ -43,7 +46,33 @@ export default function ChatInterface({
     api: '/api/chat',
     body: { modelId, retrievedContext, docCategory },
     streamProtocol: 'text',
+    onResponse: (response) => {
+      const fid = response.headers.get('X-Feedback-Id')
+      if (fid) pendingFeedbackIdRef.current = fid
+    },
+    onFinish: (message) => {
+      const fid = pendingFeedbackIdRef.current
+      if (fid && message.id) {
+        setFeedbackMap(prev => ({ ...prev, [message.id]: fid }))
+        pendingFeedbackIdRef.current = null
+      }
+    },
   })
+
+  async function handleFeedback(messageId: string, feedback: 'up' | 'down') {
+    const feedbackId = feedbackMap[messageId]
+    if (!feedbackId || feedbackState[feedbackId]) return
+    setFeedbackState(prev => ({ ...prev, [feedbackId]: feedback }))
+    try {
+      await fetch('/api/chat/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedbackId, feedback }),
+      })
+    } catch {
+      setFeedbackState(prev => { const n = { ...prev }; delete n[feedbackId]; return n })
+    }
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -138,7 +167,7 @@ export default function ChatInterface({
                   : 'bg-white text-kb-navy rounded-tl-sm',
               )}
             >
-              {m.role === 'assistant' ? (
+              {m.role === 'assistant' ? (<>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -196,7 +225,45 @@ export default function ChatInterface({
                 >
                   {m.content}
                 </ReactMarkdown>
-              ) : (
+                {!(isLoading && m.id === messages.at(-1)?.id) && (
+                  <div className="flex gap-1 mt-2 pt-2 border-t border-kb-gray-border/40">
+                    {(() => {
+                      const fid = feedbackMap[m.id]
+                      const selected = fid ? feedbackState[fid] : undefined
+                      return (
+                        <>
+                          <button
+                            onClick={() => handleFeedback(m.id, 'up')}
+                            disabled={!!selected}
+                            className={cn(
+                              'flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors',
+                              selected === 'up'
+                                ? 'bg-kb-navy text-white'
+                                : 'text-kb-gray hover:bg-kb-gray-light disabled:opacity-40',
+                            )}
+                          >
+                            <ThumbsUp className="w-3 h-3" />
+                            도움이 됐어요
+                          </button>
+                          <button
+                            onClick={() => handleFeedback(m.id, 'down')}
+                            disabled={!!selected}
+                            className={cn(
+                              'flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors',
+                              selected === 'down'
+                                ? 'bg-red-500 text-white'
+                                : 'text-kb-gray hover:bg-kb-gray-light disabled:opacity-40',
+                            )}
+                          >
+                            <ThumbsDown className="w-3 h-3" />
+                            도움이 안 됐어요
+                          </button>
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
+              </>) : (
                 <p className="whitespace-pre-wrap">{m.content}</p>
               )}
             </div>

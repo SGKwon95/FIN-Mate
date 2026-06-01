@@ -25,6 +25,7 @@ export interface DocChunk {
 }
 
 export interface RetrievedChunk {
+  id: string
   content: string
   docName: string
   articleNum: string | null
@@ -149,6 +150,7 @@ export async function retrieveChunks(
   const rows = docNames?.length
     ? await prisma.$queryRaw<RetrievedChunk[]>`
         SELECT
+          id,
           content,
           doc_name    AS "docName",
           article_num AS "articleNum",
@@ -158,11 +160,12 @@ export async function retrieveChunks(
         FROM document_chunks
         WHERE doc_name = ANY(${docNames}::text[])
           AND 1 - (embedding <=> ${vec}::vector) >= ${minSimilarity}
-        ORDER BY embedding <=> ${vec}::vector
+        ORDER BY (embedding <=> ${vec}::vector) / NULLIF(quality_score, 0)
         LIMIT ${topK}
       `
     : await prisma.$queryRaw<RetrievedChunk[]>`
         SELECT
+          id,
           content,
           doc_name    AS "docName",
           article_num AS "articleNum",
@@ -171,7 +174,7 @@ export async function retrieveChunks(
           1 - (embedding <=> ${vec}::vector) AS similarity
         FROM document_chunks
         WHERE 1 - (embedding <=> ${vec}::vector) >= ${minSimilarity}
-        ORDER BY embedding <=> ${vec}::vector
+        ORDER BY (embedding <=> ${vec}::vector) / NULLIF(quality_score, 0)
         LIMIT ${topK}
       `
 
@@ -192,4 +195,13 @@ export function chunksToContext(chunks: RetrievedChunk[]): string {
 
 export async function deleteChunks(docName: string): Promise<void> {
   await prisma.documentChunk.deleteMany({ where: { docName } })
+}
+
+export async function adjustChunkQuality(chunkIds: string[], delta: number): Promise<void> {
+  if (chunkIds.length === 0) return
+  await prisma.$executeRaw`
+    UPDATE document_chunks
+    SET quality_score = GREATEST(0.1, LEAST(2.0, quality_score + ${delta}))
+    WHERE id = ANY(${chunkIds}::text[]::uuid[])
+  `
 }
