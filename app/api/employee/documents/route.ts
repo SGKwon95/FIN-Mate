@@ -3,10 +3,14 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { htmlToPlainText, chunkDocument, saveChunks } from '@/lib/rag'
 import { embed } from '@/lib/embeddings'
+import { spawn } from 'child_process'
+import { writeFile, unlink } from 'fs/promises'
+import { tmpdir } from 'os'
+import path from 'path'
 
 const BATCH_SIZE = 8
-const ALLOWED_TYPES = ['text/plain', 'text/markdown', 'text/html', 'text/htm']
-const ALLOWED_EXTS  = ['.txt', '.md', '.html', '.htm']
+const ALLOWED_TYPES = ['text/plain', 'text/markdown', 'text/html', 'text/htm', 'application/pdf']
+const ALLOWED_EXTS  = ['.txt', '.md', '.html', '.htm', '.pdf']
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -46,11 +50,15 @@ export async function POST(req: NextRequest) {
 
   const ext = '.' + file.name.split('.').pop()?.toLowerCase()
   if (!ALLOWED_EXTS.includes(ext))
-    return NextResponse.json({ error: '.txt .md .html .htm 파일만 지원합니다.' }, { status: 400 })
+    return NextResponse.json({ error: '.txt .md .html .htm .pdf 파일만 지원합니다.' }, { status: 400 })
 
-  const raw = await file.text()
-  const isHtml = ext === '.html' || ext === '.htm'
-  const text   = isHtml ? htmlToPlainText(raw) : raw
+  let text: string
+  if (ext === '.pdf') {
+    text = await extractPdfText(await file.arrayBuffer())
+  } else {
+    const raw = await file.text()
+    text = (ext === '.html' || ext === '.htm') ? htmlToPlainText(raw) : raw
+  }
 
   if (!text.trim()) return NextResponse.json({ error: '파일 내용이 비어 있습니다.' }, { status: 400 })
 
@@ -93,4 +101,27 @@ export async function POST(req: NextRequest) {
       uploadedAt:   doc.uploadedAt,
     },
   })
+}
+
+async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
+  const tmpPath = path.join(tmpdir(), `pdf-${Date.now()}.pdf`)
+  await writeFile(tmpPath, Buffer.from(buffer))
+
+  try {
+    return await new Promise((resolve, reject) => {
+      const script = path.join(process.cwd(), 'scripts', 'pdf_extract.py')
+      const proc = spawn('python3', [script, tmpPath])
+      const chunks: Buffer[] = []
+      const errChunks: Buffer[] = []
+
+      proc.stdout.on('data', (d: Buffer) => chunks.push(d))
+      proc.stderr.on('data', (d: Buffer) => errChunks.push(d))
+      proc.on('close', (code) => {
+        if (code !== 0) reject(new Error(Buffer.concat(errChunks).toString()))
+        else resolve(Buffer.concat(chunks).toString('utf8'))
+      })
+    })
+  } finally {
+    await unlink(tmpPath).catch(() => null)
+  }
 }

@@ -89,7 +89,7 @@ export default function DocManager() {
               <input
                 ref={ref}
                 type="file"
-                accept=".txt,.md,.html,.htm"
+                accept=".txt,.md,.html,.htm,.pdf"
                 className="hidden"
                 onChange={e => {
                   const file = e.target.files?.[0]

@@ -7,10 +7,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 
-const MODELS = [
-  { id: 'qwen2.5-14b-instruct', label: 'Qwen 2.5 14B' },
-  { id: 'google/gemma-4-e4b',   label: 'Gemma 4' },
-]
+type Model = { id: string; label: string }
 
 export default function ChatInterface({
   onClose,
@@ -21,7 +18,18 @@ export default function ChatInterface({
   initialContext?: string
   docCategory?: 'all' | 'banking' | 'product'
 } = {}) {
-  const [modelId, setModelId] = useState('qwen2.5-14b-instruct')
+  const [models, setModels] = useState<Model[]>([])
+  const [modelId, setModelId] = useState('')
+
+  useEffect(() => {
+    fetch('/api/models')
+      .then(r => r.json())
+      .then((data: Model[]) => {
+        setModels(data)
+        if (data.length > 0) setModelId(data[0].id)
+      })
+      .catch(() => {})
+  }, [])
   const [retrievedContext, setRetrievedContext] = useState(initialContext ?? '')
 
   useEffect(() => {
@@ -74,7 +82,8 @@ export default function ChatInterface({
             onChange={(e) => setModelId(e.target.value)}
             className="text-sm border border-kb-gray-border rounded-lg px-2.5 py-1.5 bg-kb-gray-light text-kb-navy focus:outline-none focus:ring-2 focus:ring-kb-yellow cursor-pointer font-medium"
           >
-            {MODELS.map((m) => (
+            {models.length === 0 && <option value="">모델 로딩 중…</option>}
+            {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
