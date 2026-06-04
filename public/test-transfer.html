@@ -450,11 +450,19 @@
 
     if (starting) {
       log(`Kafka 워커 시작 중... (pid=${data.pid})`)
-      // 실제로 프로세스가 살아있는지 1초 후 확인
-      setTimeout(pollKafkaStatus, 1000)
+      setTimeout(async () => {
+        const { running } = await fetch('/api/test/kafka').then(r => r.json()).catch(() => ({ running: false }))
+        setKafkaUI(running)
+        if (running) log('Kafka 워커 시작완료', 's')
+        else         log('Kafka 워커 시작 실패 — 서버 로그를 확인하세요', 'er')
+      }, 1500)
     } else {
       log('Kafka 워커 중단 요청', 'w')
-      setTimeout(pollKafkaStatus, 1500)
+      setTimeout(async () => {
+        const { running } = await fetch('/api/test/kafka').then(r => r.json()).catch(() => ({ running: true }))
+        setKafkaUI(running)
+        if (!running) log('Kafka 워커 중단됨', 'w')
+      }, 1500)
     }
   }
 

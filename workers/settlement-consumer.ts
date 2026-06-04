@@ -24,8 +24,8 @@ async function main() {
     waitForLeaders: true,
     topics: Object.values(TOPICS).map((topic) => ({
       topic,
-      numPartitions:     1,
-      replicationFactor: 1,
+      numPartitions:     3,
+      replicationFactor: 3,
     })),
   })
   await admin.disconnect()
