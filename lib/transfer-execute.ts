@@ -160,31 +160,39 @@ export async function executeTransfer(input: {
     if (!result) return { ok: false, message: "잔액이 부족합니다." }
 
     // 공동망으로 이체 요청 발행
+    // 브로커 장애·리더 선출 중 producer.send()가 무한 행잉하는 것을 막기 위해 5s 타임아웃.
+    // DB 트랜잭션은 이미 완료(PENDING)이므로 타임아웃 시에도 데이터 손실 없음.
     try {
       const producer = await getProducer()
-      await producer.send({
-        topic: TOPICS.TRANSFER_REQUESTS,
-        messages: [{
-          key: result.transactionId,
-          value: JSON.stringify({
-            transactionId:    result.transactionId,
-            instructionId:    result.instructionId,
-            transactionNo:    txNo,
-            fromBankCode:     OWN_BANK_CODE,
-            fromAccountNumber: fromAccount.accountNumber,
-            fromPartyName:    callerName,
-            toBankCode:       bankCode,
-            toAccountNumber:  toAccountNumber,
-            toAccountName:    toName,
-            amount,
-            memo:             memo ?? null,
-            requestedAt:      now.toISOString(),
-          }),
-          headers: injectTraceContext(),
-        }],
-      })
+      const sendTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Kafka send timeout (5s)")), 5000)
+      )
+      await Promise.race([
+        producer.send({
+          topic: TOPICS.TRANSFER_REQUESTS,
+          messages: [{
+            key: result.transactionId,
+            value: JSON.stringify({
+              transactionId:    result.transactionId,
+              instructionId:    result.instructionId,
+              transactionNo:    txNo,
+              fromBankCode:     OWN_BANK_CODE,
+              fromAccountNumber: fromAccount.accountNumber,
+              fromPartyName:    callerName,
+              toBankCode:       bankCode,
+              toAccountNumber:  toAccountNumber,
+              toAccountName:    toName,
+              amount,
+              memo:             memo ?? null,
+              requestedAt:      now.toISOString(),
+            }),
+            headers: injectTraceContext(),
+          }],
+        }),
+        sendTimeout,
+      ])
     } catch (e) {
-      // Kafka 발행 실패 — DB 트랜잭션은 이미 완료되어 PENDING 상태로 남음
+      // Kafka 발행 실패(또는 타임아웃) — DB는 PENDING 상태로 남아 추후 재처리 가능
       console.error("[Kafka] 이체 요청 발행 실패 (transactionId=%s):", result.transactionId, e)
     }
 

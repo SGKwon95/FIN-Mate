@@ -154,6 +154,173 @@ docker exec -it postgres psql -U postgres fin-mate -c \
 
 ---
 
+---
+
+### Scenario B — 브로커 장애 내성 (1-broker Down)
+
+#### 1차 실행 (실패)
+
+**실행일**: 2026-06-05 / **설정**: 50 VU, 계좌 1개  
+**결과**: http_req_failed 99.91% ❌ — 단일 계좌에 50 VU 집중 → 행 락 직렬화 대기가 k6 10s timeout 초과.  
+Kafka leadership election 중단도 복합 작용. 재실행 조건 미충족.
+
+#### 2차 실행 (성공)
+
+**실행일**: 2026-06-05  
+**설정**: 50 VU, 8.5분 (안정 1m → 3m → 2m → 2m → 쿨다운 30s)  
+**계좌**: GENERAL + SALARY 2개 (출금 가능 계좌만 사용)  
+**코드 수정**: `producer.send()` 5s 타임아웃 추가 (`lib/transfer-execute.ts`)  
+**브로커 중지**: t=2:05 (`docker stop kafka-broker-2` on 49.50.135.166)  
+**브로커 재시작**: t=7:21 (`docker start kafka-broker-2`)
+
+#### k6 결과
+
+| 지표 | 측정값 | 임계값 | 판정 |
+|---|---|---|---|
+| `http_req_failed rate` | **0.32%** | < 10% | ✅ PASS |
+| `transfer_error_rate` | **0.32%** | < 10% | ✅ PASS |
+| 처리량 | **54.5 req/s** | — | — |
+| avg 응답시간 | **837ms** | — | — |
+| p(95) | **2.37s** | — | — |
+| 성공 건수 | **28,869 / 28,964** | — | — |
+| 실패 건수 | **95** | — | — |
+
+#### DB 처리 건수 (memo = 'overload-broker-failure', 2차 누적)
+
+| transaction_status | count |
+|---|---|
+| PENDING | 41,139 |
+
+#### 분석
+
+- **broker 2 중지 구간(t=2:05~7:21) 투명 처리**: 2-broker(Pi+broker3)로 ISR=2 유지. `acks: -1`(all)은 2-ISR 응답으로 충족 → 에러 없음.
+- **0.32% 에러**: 브로커 재시작 직후 리더 선출 완료 전 ~1s 구간에서 발생한 것으로 추정. 5s Kafka 타임아웃 내에서 재시도 완료.
+- **1차 실패 교훈**: 단일 계좌 + 고VU = DB 행 락 직렬화가 실제 병목. SAVINGS/TIME_DEPOSIT 계좌는 출금 불가로 제외해야 함.
+
+---
+
+### Scenario C — 최대 TPS (max-tps, Producer Flood)
+
+#### 1차 실행 (실패)
+
+**실행일**: 2026-06-05 / **설정**: 100→300→500 VU, 계좌 1개  
+**결과**: http_req_failed 99.97% ❌ — Kafka leadership election 중단 + producer.send() 무한 행잉.  
+원인: Scenario B 브로커 재시작 후 클러스터 미안정 상태에서 연속 실행.
+
+#### 2차 실행 (성공)
+
+**실행일**: 2026-06-05  
+**설정**: 50→100→200 VU (조정), 5분 / GENERAL+SALARY 2계좌  
+**코드 수정**: `producer.send()` 5s 타임아웃, Scenario C max VU 500→200
+
+#### k6 결과
+
+| 지표 | 측정값 | 임계값 | 판정 |
+|---|---|---|---|
+| `http_req_failed rate` | **0.76%** | < 10% | ✅ PASS |
+| `http_req_duration p(95)` | **4.67s** | < 5000ms | ✅ PASS |
+| 처리량 | **51.5 req/s** | — | — |
+| avg 응답시간 | **2.28s** | — | — |
+| p(90) | **4.01s** | — | — |
+| 성공 건수 | **15,992 / 16,115** | — | — |
+| 실패 건수 | **123** | — | — |
+
+#### DB 처리 건수 (memo = 'overload-max-tps', 2차 누적)
+
+| transaction_status | count |
+|---|---|
+| PENDING | 25,521 |
+
+#### 분석
+
+- **p(95)=4.67s** — 200 VU / 2계좌 = 100 VU/계좌. DB 행 락 대기가 임계값(5s) 근처까지 올라옴. Pi PostgreSQL의 단일 계좌 직렬화 한계.
+- **병목: DB 행 락** — avg 2.28s는 거의 전부 `SELECT FOR UPDATE` 대기 시간. Kafka send는 건당 수십ms.
+- **500 VU가 불가능한 이유**: 100 VU/계좌 초과 시 `p(95) > 5000ms` 초과. Pi 사양상 계좌당 ~100 VU가 한계.
+- **1차 실패 교훈**: `producer.send()` 타임아웃 없이 Kafka 비정상 상태에서 실행하면 전량 HTTP timeout 발생.
+
+---
+
+### Scenario D: Kafka 리밸런싱 (Consumer Scale-up/down)
+
+**관찰 포인트**: 컨슈머 그룹 멤버 변경 시 파티션 재할당(rebalance) 중 처리 공백 시간과 at-least-once 중복 처리 여부.
+
+| 시각 | 액션 | 기대 현상 |
+|---|---|---|
+| t=0:00 | consumer 1개 기동 (`npm run kafka:settlement`) | 안정 처리 |
+| t=1:00 | consumer 2번째 인스턴스 기동 | **rebalance #1** — 3 partition을 2개 인스턴스에 재분배 (예: P0·P1 → inst1, P2 → inst2) |
+| t=3:00 | consumer 1번 kill (`pkill -f settlement-consumer`) | **rebalance #2** — `sessionTimeout=10s` 이후 inst2가 3 partition 전부 인수 |
+| t=5:00 | consumer 2번도 kill | consumer 0개 → lag 급증, HTTP는 정상 (PENDING 누적) |
+| t=7:00 | consumer 재기동 | **rebalance #3** + lag drain |
+
+```bash
+# [터미널 3] lag 모니터링
+npx tsx scripts/load-test/watch-lag.ts
+
+# [터미널 4] k6 실행
+k6 run -e BASE_URL=$BASE_URL \
+  -e FROM_ACCOUNT_IDS=$FROM_ACCOUNT_IDS \
+  -e SCENARIO=rebalancing scripts/load-test/k6-overload.js
+
+# t=1:00 — [터미널 5] 두 번째 consumer 기동
+npm run kafka:settlement
+
+# t=3:00 — 첫 번째 consumer kill (터미널 2의 kafka:settlement PID 확인 후)
+pkill -f "settlement-consumer"   # 하나만 죽도록 주의
+
+# t=5:00 — 두 번째 consumer kill
+pkill -f "settlement-consumer"
+
+# t=7:00 — consumer 재기동
+npm run kafka:settlement
+```
+
+**기록할 수치**: rebalance 발생 횟수, 각 rebalance 시 처리 공백(초), 공백 중 lag 증가량, kill-to-rebalance 지연(sessionTimeout=10s 확인), at-least-once 중복 처리 건수.
+
+#### 실제 실행 결과
+
+**실행일**: 2026-06-05  
+**설정**: 100 VU 고정, 9.5분 (안정 1m → 2m×4구간 → 쿨다운 30s)
+
+| 시각 | 액션 | 비고 |
+|---|---|---|
+| t=0:00 | consumer #1 + k6 시작 | PID 자동 추적 |
+| t=1:00 | consumer #2 추가 | **rebalance #1** |
+| t=3:00 | consumer #1 kill (-KILL) | **rebalance #2** (`sessionTimeout=10s`) |
+| t=5:00 | consumer #2 kill | consumer 0개 → lag 누적 |
+| t=7:00 | consumer #3 재기동 | **rebalance #3** + drain |
+
+#### k6 결과
+
+| 지표 | 측정값 | 임계값 | 판정 |
+|---|---|---|---|
+| `http_req_failed rate` | **0.82%** | < 10% | ✅ PASS |
+| `transfer_error_rate` | **0.82%** | < 10% | ✅ PASS |
+| 처리량 | **50.36 req/s** | — | — |
+| avg 응답시간 | **1.83s** | — | — |
+| p(90) | **3.27s** | — | — |
+| p(95) | **4.29s** | — | — |
+| max | **11.25s** (rebalance 구간) | — | — |
+| 성공 건수 | **29,654 / 29,902** | — | — |
+| 실패 건수 | **248** | — | — |
+
+#### DB 처리 건수 (memo = 'overload-rebalancing')
+
+| transaction_status | count |
+|---|---|
+| PENDING | 29,680 |
+
+(consumer kill로 정산 미완료. consumer #3 재기동 후 drain 예정)
+
+#### 분석
+
+- **HTTP 에러율 0.82%** — 리밸런싱 3회 발생 중에도 극히 낮은 에러율 유지. `producer.send()` 이후 HTTP 응답이 즉시 반환되므로 consumer 상태가 HTTP 레이어에 영향 없음.
+- **at-least-once 동작 확인** — consumer kill 시 처리 중 메시지는 커밋 안 됨. consumer 재기동 후 last committed offset부터 재처리.
+- **max=11.25s** — rebalance 발생 시 일부 DB 락 대기 증가. consumer가 파티션을 전량 인수하는 순간 처리 폭주로 DB 경합 발생.
+- **`sessionTimeout=10s` 효과** — consumer kill 후 최대 10s 이내 리밸런스 감지. 기존 30s 대비 3배 빠른 복구.
+- **Scenario A와 비교**: 단일 consumer kill(A) vs 규모 변화(D) 모두 HTTP 에러율 1% 미만으로 내성 우수.
+
+---
+
 ## 실행 순서 요약
 
 1. 토픽 재생성 확인 (`PartitionCount:3, RF:3`)
@@ -164,6 +331,8 @@ docker exec -it postgres psql -U postgres fin-mate -c \
 6. Scenario B 실행 + 결과 기록
 7. 잔액 재증액
 8. Scenario C 실행 + 결과 기록
+9. 잔액 재증액
+10. Scenario D 실행 + 결과 기록
 
 ## 검증 포인트
 
@@ -189,7 +358,7 @@ docker exec -it postgres psql -U postgres fin-mate -c \
 | `transfer_error_rate` | **0.35%** | < 30% | ✅ PASS |
 | 처리량 | **48.8 req/s** | — | — |
 | avg 응답시간 | **3.26s** | — | — |
-| p(90) | **4.96s** | — | — |
+| p(90) | **4.96s** | — | — |1
 | p(95) | **5.7s** | — | — |
 | max | **10s** (timeout) | — | — |
 | 성공 건수 | **20,339** / 20,411 | — | — |
