@@ -1708,6 +1708,7 @@ async function main() {
   await prisma.loanDetail.create({
     data: {
       productId: mortgage1.productId,
+      loanType: "MORTGAGE",
       baseRateType: "FIXED",
       interestType: "COMPOUND",
       collateralRequired: true,
@@ -1751,6 +1752,7 @@ async function main() {
   await prisma.loanDetail.create({
     data: {
       productId: mortgage2.productId,
+      loanType: "MORTGAGE",
       baseRateType: "VARIABLE",
       interestType: "COMPOUND",
       collateralRequired: true,
@@ -1794,6 +1796,7 @@ async function main() {
   await prisma.loanDetail.create({
     data: {
       productId: jeonse1.productId,
+      loanType: "JEONSE",
       baseRateType: "FIXED",
       interestType: "SIMPLE",
       collateralRequired: true,
@@ -1836,6 +1839,7 @@ async function main() {
   await prisma.loanDetail.create({
     data: {
       productId: jeonse2.productId,
+      loanType: "JEONSE",
       baseRateType: "FIXED",
       interestType: "SIMPLE",
       collateralRequired: true,
@@ -1878,6 +1882,7 @@ async function main() {
   await prisma.loanDetail.create({
     data: {
       productId: credit1.productId,
+      loanType: "CREDIT",
       baseRateType: "VARIABLE",
       interestType: "COMPOUND",
       collateralRequired: false,
@@ -1918,6 +1923,7 @@ async function main() {
   await prisma.loanDetail.create({
     data: {
       productId: credit2.productId,
+      loanType: "CREDIT",
       baseRateType: "VARIABLE",
       interestType: "SIMPLE",
       collateralRequired: false,

@@ -104,6 +104,25 @@ FIN-Mate(A)
 
 W3C `traceparent` 헤더로 Kafka 메시지 전파 → Tempo에서 전체 10-step을 단일 traceId로 확인 가능.
 
+### Kafka 역할 구분
+
+**Broker** — 라즈베리파이 (`KAFKA_BROKER` 환경변수)
+
+| 토픽 상수 | 토픽명 | Producer | Consumer |
+|-----------|--------|----------|----------|
+| `TRANSFER_REQUESTS` | `interbank-transfer-requests` | FIN-Mate 앱 | Gateway |
+| `GATEWAY_ACK` | `interbank-gateway-ack` | Gateway | FIN-Mate 앱 |
+| `ROUTED_REQUESTS` | `interbank-routed-requests` | Gateway | B은행 시뮬레이터 |
+| `B_RECEIVED_ACK` | `interbank-b-received-ack` | B은행 | Gateway |
+| `B_RESULTS` | `interbank-b-results` | B은행 | Gateway |
+| `GATEWAY_B_ACK` | `interbank-gateway-b-ack` | Gateway | B은행 |
+| `TRANSFER_SETTLEMENTS` | `interbank-transfer-settlements` | Gateway | settlement-consumer |
+| `A_SETTLED_ACK` | `interbank-a-settled-ack` | FIN-Mate 앱 | Gateway |
+| `INBOUND_REQUESTS` | `interbank-inbound-requests` | Gateway | inbound-consumer |
+| `INBOUND_RESULTS` | `interbank-inbound-results` | inbound-consumer | Gateway |
+
+컨슈머 그룹: `fin-mate-settlement-group` (TRANSFER_SETTLEMENTS), `fin-mate-inbound-group` (INBOUND_REQUESTS)
+
 ---
 
 ## 프로젝트 구조
@@ -264,6 +283,26 @@ npx prisma migrate dev --name <name>     # 마이그레이션 생성 및 적용
 npx prisma generate                      # Prisma 클라이언트 재생성
 npm run db:seed                          # 시드 데이터 삽입
 npm run langsmith:eval                   # LangSmith RAG 오프라인 평가
+```
+
+---
+
+## 부하 테스트
+
+k6 기반 타행이체 API 부하 테스트 스크립트 및 결과 보고서.
+
+| 파일 | 설명 |
+|------|------|
+| [`scripts/load-test/k6-transfer.js`](scripts/load-test/k6-transfer.js) | k6 시나리오 (50 VU, 10분) |
+| [`scripts/load-test/watch-lag.sh`](scripts/load-test/watch-lag.sh) | Kafka Consumer Lag 모니터링 |
+| [`scripts/load-test/REPORT.md`](scripts/load-test/REPORT.md) | 테스트 결과 보고서 |
+
+```bash
+# k6 실행 (프로젝트 루트에서)
+k6 run scripts/load-test/k6-transfer.js
+
+# Consumer Lag 모니터링 (별도 터미널)
+bash scripts/load-test/watch-lag.sh
 ```
 
 ---

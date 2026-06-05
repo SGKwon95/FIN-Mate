@@ -20,8 +20,9 @@ const TOPICS = {
 
 const kafka = new Kafka({
   clientId: 'interbank-simulator',
-  brokers:  [process.env.KAFKA_BROKER ?? 'localhost:9092'],
+  brokers:  (process.env.KAFKA_BROKERS ?? process.env.KAFKA_BROKER ?? 'localhost:9092').split(','),
   logLevel: logLevel.WARN,
+  retry: { initialRetryTime: 3000, retries: 60 },
 })
 
 const consumer = kafka.consumer({ groupId: 'interbank-simulator-group' })
@@ -34,8 +35,8 @@ async function main() {
     waitForLeaders: true,
     topics: Object.values(TOPICS).map((topic) => ({
       topic,
-      numPartitions:     1,
-      replicationFactor: 1,
+      numPartitions:     3,
+      replicationFactor: 3,
     })),
   })
   await admin.disconnect()

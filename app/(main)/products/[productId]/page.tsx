@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ChevronRight, Shield, CheckCircle } from "lucide-react"
 import { formatKRW } from "@/lib/formatters"
+import ChatPopup from "@/components/chat/ChatPopup"
 import type { Metadata } from "next"
 
 export async function generateMetadata({
@@ -88,8 +89,50 @@ export default async function ProductDetailPage({
     ? `/products/${productId}/savings-subscribe`
     : null
 
+  const minioBase = `${process.env.MINIO_PUBLIC_URL}/${process.env.MINIO_BUCKET}`
+  const termsUrls = isTimeDeposit
+    ? [`${minioBase}/terms/time-deposit.html`]
+    : isSavings
+    ? [`${minioBase}/terms/savings.html`]
+    : []
+
   const depositDetail = product.depositDetail
   const loanDetail = product.loanDetail
+
+  // 챗봇 컨텍스트: 현재 상품 메타데이터 (약관 문서 앞에 삽입됨)
+  const productLines: string[] = [
+    `[현재 조회 중인 상품]`,
+    `상품명: ${product.productName}`,
+    `종류: ${isTimeDeposit ? "정기예금" : isSavings ? "적금" : isLoan ? "대출" : product.productTypeCode}`,
+  ]
+  if (rateStr) productLines.push(`기준금리: ${rateStr} (세전)`)
+  if (depositDetail) {
+    if (depositDetail.minPeriodMonths != null && depositDetail.maxPeriodMonths != null) {
+      productLines.push(
+        depositDetail.minPeriodMonths === depositDetail.maxPeriodMonths
+          ? `가입기간: ${depositDetail.minPeriodMonths}개월`
+          : `가입기간: ${depositDetail.minPeriodMonths}~${depositDetail.maxPeriodMonths}개월`
+      )
+    }
+    if (depositDetail.minAmount != null)
+      productLines.push(`${isSavings ? "최소 월 납입금" : "최소 예치금액"}: ${formatKRW(Number(depositDetail.minAmount))}`)
+    if (depositDetail.maxAmount != null)
+      productLines.push(`${isSavings ? "최대 월 납입금" : "최대 예치금액"}: ${formatKRW(Number(depositDetail.maxAmount))}`)
+    if (depositDetail.interestType)
+      productLines.push(`이자 방식: ${depositDetail.interestType === "SIMPLE" ? "단리" : "복리"}`)
+  }
+  if (loanDetail) {
+    if (loanDetail.maxLoanAmount != null)
+      productLines.push(`최대 대출한도: ${formatKRW(Number(loanDetail.maxLoanAmount))}`)
+    if (loanDetail.maxLoanPeriodMonths != null)
+      productLines.push(`최대 대출기간: ${loanDetail.maxLoanPeriodMonths}개월`)
+  }
+  if (product.isDepositInsured)
+    productLines.push(`예금자보호: 최고 ${Number(product.depositInsuranceLimit).toLocaleString("ko-KR")}원`)
+  if (product.productRateBenefits.length > 0)
+    productLines.push(`우대혜택: ${product.productRateBenefits.map((b) => b.benefitName).join(", ")}`)
+
+  const productContext = productLines.join("\n")
 
   const COLLATERAL_LABEL: Record<string, string> = {
     REAL_ESTATE: "부동산",
@@ -238,6 +281,8 @@ export default async function ProductDetailPage({
           대출 신청하기 <ChevronRight className="w-5 h-5" />
         </Link>
       ) : null}
+
+      <ChatPopup contextUrls={termsUrls} productContext={productContext} />
     </div>
   )
 }

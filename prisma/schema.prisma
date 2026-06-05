@@ -442,6 +442,8 @@ model DepositDetail {
 model LoanDetail {
   loanDetailId            String   @id @default(dbgenerated("gen_random_uuid()")) @map("loan_detail_id") @db.Uuid
   productId               String   @unique @map("product_id") @db.Uuid
+  loanType                String   @default("CREDIT") @map("loan_type") @db.VarChar(20)
+  // MORTGAGE(담보대출) | JEONSE(전세자금) | CREDIT(신용대출) | OVERDRAFT(마이너스통장)
   baseRateType            String   @map("base_rate_type") @db.VarChar(20)
   interestType            String   @map("interest_type") @db.VarChar(10)
   maxLtvRatio             Decimal? @map("max_ltv_ratio") @db.Decimal(5, 4)
@@ -606,8 +608,8 @@ model TransferInstruction {
   transferScope        String?   @map("transfer_scope") @db.VarChar(10)
   clearingNetwork      String?   @map("clearing_network") @db.VarChar(20)
   networkSeqNo         String?   @map("network_seq_no") @db.VarChar(50)
-  networkResponseCode  String?   @map("network_response_code") @db.VarChar(10)
-  bankResponseCode     String?   @map("bank_response_code") @db.VarChar(10)
+  networkResponseCode  String?   @map("network_response_code") @db.VarChar(30)
+  bankResponseCode     String?   @map("bank_response_code") @db.VarChar(30)
   instructionStatus    String    @default("PENDING") @map("instruction_status") @db.VarChar(20)
   totalCount           Int?      @map("total_count")
   successCount         Int       @default(0) @map("success_count")
@@ -643,9 +645,9 @@ model KftcReceipt {
   direction        String   @default("OUTBOUND") @map("direction") @db.VarChar(10)
   instructionId    String?  @map("instruction_id") @db.Uuid
   transactionId    String?  @unique @map("transaction_id") @db.Uuid
-  rspCode          String   @map("rsp_code") @db.VarChar(10)
+  rspCode          String   @map("rsp_code") @db.VarChar(30)
   rspMessage       String?  @map("rsp_message") @db.VarChar(200)
-  bankRspCode      String?  @map("bank_rsp_code") @db.VarChar(10)
+  bankRspCode      String?  @map("bank_rsp_code") @db.VarChar(30)
   bankRspMessage   String?  @map("bank_rsp_message") @db.VarChar(200)
   fintechUseNum    String?  @map("fintech_use_num") @db.VarChar(30)
   bankTranId       String?  @map("bank_tran_id") @db.VarChar(30)
@@ -996,4 +998,36 @@ model ScheduledTransferExecution {
 
   @@index([scheduledTransferId], map: "idx_ste_scheduled")
   @@map("scheduled_transfer_execution")
+}
+
+// ============================================================
+// 30. RAG 문서 청크 (pgvector)
+// embedding 컬럼은 Unsupported — $queryRaw로만 접근
+// ============================================================
+model DocumentChunk {
+  id           String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  docName      String                      @map("doc_name")
+  articleNum   String?                     @map("article_num")
+  sectionNum   String?                     @map("section_num")
+  content      String
+  metadata     Json                        @default("{}")
+  embedding    Unsupported("vector(768)")?
+  qualityScore Float                       @default(1.0) @map("quality_score")
+  createdAt    DateTime                    @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([docName], map: "idx_doc_chunk_doc_name")
+  @@map("document_chunks")
+}
+
+// ============================================================
+// 31. 채팅 피드백 (RAG 청크 품질 개선용)
+// ============================================================
+model ChatFeedback {
+  feedbackId String   @id @default(dbgenerated("gen_random_uuid()")) @map("feedback_id") @db.Uuid
+  chunkIds   String[] @map("chunk_ids") @db.Uuid
+  feedback   String?  @db.VarChar(4)
+  question   String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("chat_feedback")
 }

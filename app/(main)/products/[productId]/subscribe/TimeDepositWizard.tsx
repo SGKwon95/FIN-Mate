@@ -262,7 +262,7 @@ export default function TimeDepositWizard({
 
         {/* 가입 금액 */}
         <div className="bg-white rounded-2xl shadow-card p-4">
-          <p className="text-xs text-kb-gray font-medium mb-2">가입 금액</p>
+          <p className="text-xs text-kb-gray font-medium mb-2">예치 금액 (일시납)</p>
           <div className="flex items-baseline gap-1">
             <input
               type="text"
@@ -274,7 +274,7 @@ export default function TimeDepositWizard({
             />
             <span className="text-kb-gray font-medium">원</span>
           </div>
-          <p className="text-xs text-kb-gray/60 mt-1">최소 {formatKRW(product.minAmount)}</p>
+          <p className="text-xs text-kb-gray/60 mt-1">최소 {formatKRW(product.minAmount)} · 만기 시 원금 전액 + 이자 수령</p>
         </div>
 
         {/* 가입 기간 */}

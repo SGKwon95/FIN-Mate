@@ -12,13 +12,17 @@
     "kafka:simulator": "tsx --env-file=.env interbank-simulator/src/index.ts",
     "kafka:settlement": "tsx --env-file=.env workers/settlement-consumer.ts",
     "kafka:inbound": "tsx --env-file=.env workers/inbound-consumer.ts",
-    "kafka:all": "concurrently -n gateway,simulator,settlement,inbound -c blue,yellow,green,cyan \"npm run kafka:gateway\" \"npm run kafka:simulator\" \"npm run kafka:settlement\" \"npm run kafka:inbound\"",
+    "kafka:all": "concurrently --kill-others -n gateway,simulator,settlement,inbound -c blue,yellow,green,cyan \"npm run kafka:gateway\" \"npm run kafka:simulator\" \"npm run kafka:settlement\" \"npm run kafka:inbound\"",
+    "kafka:wait": "node -e \"const [host,port]=require('fs').readFileSync('.env','utf8').match(/KAFKA_BROKER=(.+)/)[1].trim().split(':');const net=require('net');let n=0;(function try_(){const s=net.createConnection(+port,host);s.on('connect',()=>{console.log('Kafka 연결 확인, 워커 시작');s.destroy();require('child_process').spawn('npm',['run','kafka:all'],{stdio:'inherit',shell:true})});s.on('error',()=>{if(++n>30){console.error('Kafka 연결 실패 (30회)');process.exit(1)}console.log('Kafka 대기중...',n);s.destroy();setTimeout(try_,3000)})})()\"",
     "kafka:seed": "tsx interbank-simulator/seed.ts",
     "worker:scheduled": "tsx --env-file=.env workers/scheduled-transfer-worker.ts",
     "loan:train": "python loan_model.py",
     "loan:ml": "uvicorn loan_inference_server:app --port 8001 --reload",
     "langsmith:eval": "tsx --env-file=.env scripts/langsmith-eval.ts",
-    "minio:upload-terms": "tsx --env-file=.env scripts/upload-terms.ts"
+    "minio:upload-terms": "tsx --env-file=.env scripts/upload-terms.ts",
+    "rag:index": "tsx --env-file=.env scripts/index-terms.ts",
+    "rag:eval": "tsx --env-file=.env scripts/rag-eval.ts",
+    "watch:lag": "tsx --env-file=.env scripts/load-test/watch-lag.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -55,6 +59,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {

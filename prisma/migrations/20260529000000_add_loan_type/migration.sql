@@ -1,0 +1,1 @@
+ALTER TABLE "loan_detail" ADD COLUMN "loan_type" VARCHAR(20) NOT NULL DEFAULT 'CREDIT';

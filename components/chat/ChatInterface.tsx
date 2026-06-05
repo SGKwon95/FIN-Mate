@@ -2,32 +2,77 @@
 
 import { useChat } from '@ai-sdk/react'
 import { useRef, useEffect, useState } from 'react'
-import { useSession } from 'next-auth/react'
-import { Send, Bot, User, Paperclip, X } from 'lucide-react'
+import { Send, Bot, User, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 
-const MODELS = [
-  { id: 'qwen2.5-14b-instruct', label: 'Qwen 2.5 14B' },
-  { id: 'google/gemma-4-e4b',   label: 'Gemma 4' },
-]
+type Model = { id: string; label: string }
 
-export default function ChatInterface() {
-  const { data: session } = useSession()
-  const isAdmin = session?.user?.isEmployee === true
+export default function ChatInterface({
+  onClose,
+  initialContext,
+  docCategory,
+}: {
+  onClose?: () => void
+  initialContext?: string
+  docCategory?: 'all' | 'banking' | 'product'
+} = {}) {
+  const [models, setModels] = useState<Model[]>([])
+  const [modelId, setModelId] = useState('')
+  const [feedbackMap, setFeedbackMap]     = useState<Record<string, string>>({})
+  const [feedbackState, setFeedbackState] = useState<Record<string, 'up' | 'down'>>({})
+  const pendingFeedbackIdRef = useRef<string | null>(null)
 
-  const [modelId, setModelId] = useState('qwen2.5-14b-instruct')
-  const [retrievedContext, setRetrievedContext] = useState('')
-  const [fileName, setFileName] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    fetch('/api/models')
+      .then(r => r.json())
+      .then((data: Model[]) => {
+        setModels(data)
+        if (data.length > 0) setModelId(data[0].id)
+      })
+      .catch(() => {})
+  }, [])
+  const [retrievedContext, setRetrievedContext] = useState(initialContext ?? '')
+
+  useEffect(() => {
+    if (initialContext) setRetrievedContext(initialContext)
+  }, [initialContext])
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
     api: '/api/chat',
-    body: { modelId, retrievedContext },
+    body: { modelId, retrievedContext, docCategory },
     streamProtocol: 'text',
+    onResponse: (response) => {
+      const fid = response.headers.get('X-Feedback-Id')
+      if (fid) pendingFeedbackIdRef.current = fid
+    },
+    onFinish: (message) => {
+      const fid = pendingFeedbackIdRef.current
+      if (fid && message.id) {
+        setFeedbackMap(prev => ({ ...prev, [message.id]: fid }))
+        pendingFeedbackIdRef.current = null
+      }
+    },
   })
+
+  async function handleFeedback(messageId: string, feedback: 'up' | 'down') {
+    const feedbackId = feedbackMap[messageId]
+    if (!feedbackId || feedbackState[feedbackId]) return
+    setFeedbackState(prev => ({ ...prev, [feedbackId]: feedback }))
+    try {
+      await fetch('/api/chat/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedbackId, feedback }),
+      })
+    } catch {
+      setFeedbackState(prev => { const n = { ...prev }; delete n[feedbackId]; return n })
+    }
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -39,23 +84,6 @@ export default function ChatInterface() {
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 128) + 'px'
   }, [input])
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      setRetrievedContext(ev.target?.result as string ?? '')
-      setFileName(file.name)
-    }
-    reader.readAsText(file, 'UTF-8')
-    e.target.value = ''
-  }
-
-  function clearDocument() {
-    setRetrievedContext('')
-    setFileName('')
-  }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -83,44 +111,21 @@ export default function ChatInterface() {
             onChange={(e) => setModelId(e.target.value)}
             className="text-sm border border-kb-gray-border rounded-lg px-2.5 py-1.5 bg-kb-gray-light text-kb-navy focus:outline-none focus:ring-2 focus:ring-kb-yellow cursor-pointer font-medium"
           >
-            {MODELS.map((m) => (
+            {models.length === 0 && <option value="">모델 로딩 중…</option>}
+            {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
         </div>
 
-        {/* 문서 업로드 — 직원(관리자)만 표시 */}
-        {isAdmin && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.md,.csv"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            {fileName ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-kb-yellow-light border border-kb-yellow text-kb-navy text-xs font-medium max-w-[160px]">
-                <Paperclip className="w-3.5 h-3.5 shrink-0 text-kb-navy" />
-                <span className="truncate">{fileName}</span>
-                <button
-                  onClick={clearDocument}
-                  className="shrink-0 ml-0.5 hover:text-kb-red transition-colors"
-                  aria-label="문서 제거"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-kb-gray-border bg-kb-gray-light text-xs text-kb-gray hover:bg-kb-yellow-light hover:text-kb-navy hover:border-kb-yellow transition-colors font-medium"
-              >
-                <Paperclip className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">문서 업로드</span>
-              </button>
-            )}
-          </>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-full flex items-center justify-center text-kb-gray hover:bg-kb-gray-light transition-colors"
+            aria-label="닫기"
+          >
+            <X className="w-4 h-4" />
+          </button>
         )}
       </div>
 
@@ -134,19 +139,12 @@ export default function ChatInterface() {
             <div className="space-y-1.5">
               <p className="font-semibold text-kb-navy text-base">AI 금융 상담원</p>
               <p className="text-kb-gray text-sm leading-relaxed max-w-xs">
-                업무 문서를 업로드하고 궁금한 내용을 질문하세요.
-                <br />문서 내용만을 기반으로 정확하게 답변해 드립니다.
+                {onClose
+                  ? "상품에 관해 질문해보세요."
+                  : "궁금한 금융 상품에 대해 질문해보세요."
+                }
               </p>
             </div>
-            {isAdmin && !fileName && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-kb-navy text-white text-sm font-medium hover:bg-kb-navy-light transition-colors shadow-card"
-              >
-                <Paperclip className="w-4 h-4" />
-                문서 업로드하기
-              </button>
-            )}
           </div>
         )}
 
@@ -169,8 +167,9 @@ export default function ChatInterface() {
                   : 'bg-white text-kb-navy rounded-tl-sm',
               )}
             >
-              {m.role === 'assistant' ? (
+              {m.role === 'assistant' ? (<>
                 <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
                   components={{
                     p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
                     strong: ({ children }) => (
@@ -178,6 +177,9 @@ export default function ChatInterface() {
                     ),
                     ul: ({ children }) => (
                       <ul className="mt-1.5 space-y-1 list-none">{children}</ul>
+                    ),
+                    ol: ({ children }) => (
+                      <ol className="mt-1.5 space-y-1 list-decimal list-inside">{children}</ol>
                     ),
                     li: ({ children }) => (
                       <li className="flex gap-1.5">
@@ -191,16 +193,77 @@ export default function ChatInterface() {
                     h2: ({ children }) => (
                       <h2 className="font-semibold text-sm mb-1.5 mt-1">{children}</h2>
                     ),
+                    h3: ({ children }) => (
+                      <h3 className="font-semibold text-xs mb-1 mt-1 text-kb-gray">{children}</h3>
+                    ),
                     code: ({ children }) => (
                       <code className="bg-kb-gray-light px-1 py-0.5 rounded text-xs font-mono">
                         {children}
                       </code>
                     ),
+                    table: ({ children }) => (
+                      <div className="overflow-x-auto my-2">
+                        <table className="w-full text-xs border-collapse">{children}</table>
+                      </div>
+                    ),
+                    thead: ({ children }) => (
+                      <thead className="bg-kb-navy text-white">{children}</thead>
+                    ),
+                    tbody: ({ children }) => (
+                      <tbody className="divide-y divide-kb-gray-border">{children}</tbody>
+                    ),
+                    tr: ({ children }) => <tr className="even:bg-kb-gray-light">{children}</tr>,
+                    th: ({ children }) => (
+                      <th className="px-2 py-1.5 text-left font-semibold whitespace-nowrap">
+                        {children}
+                      </th>
+                    ),
+                    td: ({ children }) => (
+                      <td className="px-2 py-1.5 whitespace-nowrap">{children}</td>
+                    ),
                   }}
                 >
                   {m.content}
                 </ReactMarkdown>
-              ) : (
+                {!(isLoading && m.id === messages.at(-1)?.id) && (
+                  <div className="flex gap-1 mt-2 pt-2 border-t border-kb-gray-border/40">
+                    {(() => {
+                      const fid = feedbackMap[m.id]
+                      const selected = fid ? feedbackState[fid] : undefined
+                      return (
+                        <>
+                          <button
+                            onClick={() => handleFeedback(m.id, 'up')}
+                            disabled={!!selected}
+                            className={cn(
+                              'flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors',
+                              selected === 'up'
+                                ? 'bg-kb-navy text-white'
+                                : 'text-kb-gray hover:bg-kb-gray-light disabled:opacity-40',
+                            )}
+                          >
+                            <ThumbsUp className="w-3 h-3" />
+                            도움이 됐어요
+                          </button>
+                          <button
+                            onClick={() => handleFeedback(m.id, 'down')}
+                            disabled={!!selected}
+                            className={cn(
+                              'flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors',
+                              selected === 'down'
+                                ? 'bg-red-500 text-white'
+                                : 'text-kb-gray hover:bg-kb-gray-light disabled:opacity-40',
+                            )}
+                          >
+                            <ThumbsDown className="w-3 h-3" />
+                            도움이 안 됐어요
+                          </button>
+                        </>
+                      )
+                    })()}
+                  </div>
+                )}
+              </>) : (
                 <p className="whitespace-pre-wrap">{m.content}</p>
               )}
             </div>
@@ -242,11 +305,6 @@ export default function ChatInterface() {
 
       {/* ── 하단 입력바 ───────────────────────────────── */}
       <div className="bg-white border-t border-kb-gray-border px-4 py-3 shrink-0">
-        {isAdmin && !fileName && messages.length > 0 && (
-          <p className="text-xs text-kb-gray text-center mb-2">
-            업무 문서를 업로드하면 더 정확한 답변을 받을 수 있어요.
-          </p>
-        )}
         <form onSubmit={handleSubmit} className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}

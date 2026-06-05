@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { executeTransfer } from "@/lib/transfer-execute"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -106,4 +107,20 @@ export async function GET(req: NextRequest) {
       totalPages: Math.ceil(total / limit),
     },
   })
+}
+
+export async function POST(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.partyId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const body = await req.json()
+  const result = await executeTransfer({
+    ...body,
+    callerPartyId: session.user.partyId,
+    callerName:    session.user.name ?? "",
+  })
+
+  return NextResponse.json(result, { status: result.ok ? 200 : 400 })
 }
