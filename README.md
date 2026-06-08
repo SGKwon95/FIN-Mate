@@ -123,6 +123,8 @@ W3C `traceparent` 헤더로 Kafka 메시지 전파 → Tempo에서 전체 10-ste
 
 컨슈머 그룹: `fin-mate-settlement-group` (TRANSFER_SETTLEMENTS), `fin-mate-inbound-group` (INBOUND_REQUESTS)
 
+> 상세 시퀀스 다이어그램 및 RAG 흐름도: [docs/architecture-flows.md](docs/architecture-flows.md)
+
 ---
 
 ## 프로젝트 구조
@@ -289,21 +291,7 @@ npm run langsmith:eval                   # LangSmith RAG 오프라인 평가
 
 ## 부하 테스트
 
-k6 기반 타행이체 API 부하 테스트 스크립트 및 결과 보고서.
-
-| 파일 | 설명 |
-|------|------|
-| [`scripts/load-test/k6-transfer.js`](scripts/load-test/k6-transfer.js) | k6 시나리오 (50 VU, 10분) |
-| [`scripts/load-test/watch-lag.sh`](scripts/load-test/watch-lag.sh) | Kafka Consumer Lag 모니터링 |
-| [`scripts/load-test/REPORT.md`](scripts/load-test/REPORT.md) | 테스트 결과 보고서 |
-
-```bash
-# k6 실행 (프로젝트 루트에서)
-k6 run scripts/load-test/k6-transfer.js
-
-# Consumer Lag 모니터링 (별도 터미널)
-bash scripts/load-test/watch-lag.sh
-```
+[scripts/load-test/REPORT.md](scripts/load-test/REPORT.md)
 
 ---
 
@@ -356,15 +344,6 @@ Prometheus 텍스트 포맷. 주요 메트릭:
 | `fin_mate_kafka_messages_total` | Kafka 메시지 처리 수 |
 | `fin_mate_ml_inference_duration_seconds` | ML 추론 지연 |
 | `fin_mate_rag_context_bytes` | RAG 컨텍스트 크기 |
-
----
-
-## 브랜드 컬러
-
-| 이름 | 값 |
-|------|----|
-| `kb-yellow` | `#FFCC00` |
-| `kb-navy` | `#1A2B4A` |
 
 ---
 
