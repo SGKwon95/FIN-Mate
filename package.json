@@ -21,7 +21,8 @@
     "langsmith:eval": "tsx --env-file=.env scripts/langsmith-eval.ts",
     "minio:upload-terms": "tsx --env-file=.env scripts/upload-terms.ts",
     "rag:index": "tsx --env-file=.env scripts/index-terms.ts",
-    "rag:eval": "tsx --env-file=.env scripts/rag-eval.ts"
+    "rag:eval": "tsx --env-file=.env scripts/rag-eval.ts",
+    "watch:lag": "tsx --env-file=.env scripts/load-test/watch-lag.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

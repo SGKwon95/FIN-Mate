@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { verifyAccount } from '@/app/(main)/transfer/actions'
+import { verifyAccount } from '@/lib/transfer-execute'
 import { getProducer, TOPICS } from '@/lib/kafka'
 import { toKSTDateCode } from '@/lib/formatters'
 import { injectTraceContext } from '@/lib/kafka-otel'

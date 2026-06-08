@@ -608,8 +608,8 @@ model TransferInstruction {
   transferScope        String?   @map("transfer_scope") @db.VarChar(10)
   clearingNetwork      String?   @map("clearing_network") @db.VarChar(20)
   networkSeqNo         String?   @map("network_seq_no") @db.VarChar(50)
-  networkResponseCode  String?   @map("network_response_code") @db.VarChar(10)
-  bankResponseCode     String?   @map("bank_response_code") @db.VarChar(10)
+  networkResponseCode  String?   @map("network_response_code") @db.VarChar(30)
+  bankResponseCode     String?   @map("bank_response_code") @db.VarChar(30)
   instructionStatus    String    @default("PENDING") @map("instruction_status") @db.VarChar(20)
   totalCount           Int?      @map("total_count")
   successCount         Int       @default(0) @map("success_count")
@@ -645,9 +645,9 @@ model KftcReceipt {
   direction        String   @default("OUTBOUND") @map("direction") @db.VarChar(10)
   instructionId    String?  @map("instruction_id") @db.Uuid
   transactionId    String?  @unique @map("transaction_id") @db.Uuid
-  rspCode          String   @map("rsp_code") @db.VarChar(10)
+  rspCode          String   @map("rsp_code") @db.VarChar(30)
   rspMessage       String?  @map("rsp_message") @db.VarChar(200)
-  bankRspCode      String?  @map("bank_rsp_code") @db.VarChar(10)
+  bankRspCode      String?  @map("bank_rsp_code") @db.VarChar(30)
   bankRspMessage   String?  @map("bank_rsp_message") @db.VarChar(200)
   fintechUseNum    String?  @map("fintech_use_num") @db.VarChar(30)
   bankTranId       String?  @map("bank_tran_id") @db.VarChar(30)

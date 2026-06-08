@@ -14,7 +14,11 @@ import { runWithKafkaSpan } from '@/lib/kafka-otel'
 
 const log = createWorkerLogger('settlement-consumer')
 
-const consumer = kafka.consumer({ groupId: 'fin-mate-settlement-group' })
+const consumer = kafka.consumer({
+  groupId: 'fin-mate-settlement-group',
+  heartbeatInterval: 3000,
+  sessionTimeout: 10000,
+})
 const producer  = kafka.producer()
 
 async function main() {
@@ -24,8 +28,8 @@ async function main() {
     waitForLeaders: true,
     topics: Object.values(TOPICS).map((topic) => ({
       topic,
-      numPartitions:     1,
-      replicationFactor: 1,
+      numPartitions:     3,
+      replicationFactor: 3,
     })),
   })
   await admin.disconnect()

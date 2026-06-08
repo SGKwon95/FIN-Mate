@@ -42,8 +42,8 @@ type BResult = {
 
 const ALL_TOPICS = Object.values(TOPICS).map((topic) => ({
   topic,
-  numPartitions:     1,
-  replicationFactor: 1,
+  numPartitions:     3,
+  replicationFactor: 3,
 }))
 
 const consumer = kafka.consumer({ groupId: 'interbank-gateway-group' })
