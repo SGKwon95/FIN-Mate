@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger'
 import { traceable } from 'langsmith/traceable'
 import { retrieveChunks, chunksToContext, type RetrievedChunk } from '@/lib/rag'
 import { embedOne } from '@/lib/embeddings'
+import { rewriteQuery } from '@/lib/query-rewrite'
 import {
   normalizeQuestion,
   buildDocScope,
@@ -153,6 +154,9 @@ export async function POST(req: Request) {
   if (!finalContext && useRag) {
     try {
       if (userQuestion) {
+        // 쿼리 재작성 비활성화 — 평가 결과 LLM이 언어 오염(한자 혼입) 발생 시 벡터 이탈
+        // 원문 임베딩(nomic-embed-text)이 한국어 키워드를 이미 충분히 처리함 (CR 평균 2.4/5)
+        // 재작성 재도입 조건: 한국어 유효성 검사 + 언어 오염 필터 추가 후 재평가
         queryVec = await embedOne(userQuestion)
 
         // ── [캐시 2단계] Semantic match — embedOne 완료 후 ─────────

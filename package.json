@@ -23,6 +23,7 @@
     "minio:upload-terms": "tsx --env-file=.env scripts/upload-terms.ts",
     "rag:index": "tsx --env-file=.env scripts/index-terms.ts",
     "rag:eval": "tsx --env-file=.env scripts/rag-eval.ts",
+    "rag:rewrite-eval": "tsx --env-file=.env scripts/query-rewrite-eval.ts",
     "watch:lag": "tsx --env-file=.env scripts/load-test/watch-lag.ts"
   },
   "prisma": {
