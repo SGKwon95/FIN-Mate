@@ -8,6 +8,7 @@ const { auth } = NextAuth(authConfig)
 const CUSTOMER_ONLY = [
   "/dashboard", "/accounts", "/transactions",
   "/transfer", "/auto-transfer", "/products", "/rates", "/settings",
+  "/analysis", "/recommend",
 ]
 // 직원 전용 경로 — 고객 접근 차단
 const EMPLOYEE_ONLY = ["/chat", "/loan-review"]

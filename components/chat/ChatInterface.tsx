@@ -22,7 +22,9 @@ export default function ChatInterface({
   const [modelId, setModelId] = useState('')
   const [feedbackMap, setFeedbackMap]     = useState<Record<string, string>>({})
   const [feedbackState, setFeedbackState] = useState<Record<string, 'up' | 'down'>>({})
-  const pendingFeedbackIdRef = useRef<string | null>(null)
+  const [cacheHitMap, setCacheHitMap]     = useState<Record<string, boolean>>({})
+  const pendingFeedbackIdRef  = useRef<string | null>(null)
+  const pendingCacheHitRef    = useRef<boolean>(false)
 
   useEffect(() => {
     fetch('/api/models')
@@ -34,27 +36,47 @@ export default function ChatInterface({
       .catch(() => {})
   }, [])
   const [retrievedContext, setRetrievedContext] = useState(initialContext ?? '')
+  const [suggestions, setSuggestions] = useState<string[]>([])
 
   useEffect(() => {
     if (initialContext) setRetrievedContext(initialContext)
   }, [initialContext])
 
+  // modelId와 context가 준비되면 추천 질문 생성
+  useEffect(() => {
+    if (!modelId) return
+    setSuggestions([])
+    fetch('/api/chat/suggestions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: initialContext ?? '', modelId }),
+    })
+      .then(r => r.json())
+      .then(({ questions }) => { if (Array.isArray(questions)) setSuggestions(questions) })
+      .catch(() => {})
+  }, [modelId, initialContext])
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: '/api/chat',
     body: { modelId, retrievedContext, docCategory },
     streamProtocol: 'text',
     onResponse: (response) => {
       const fid = response.headers.get('X-Feedback-Id')
       if (fid) pendingFeedbackIdRef.current = fid
+      pendingCacheHitRef.current = response.headers.get('X-Cache') === 'HIT'
     },
     onFinish: (message) => {
       const fid = pendingFeedbackIdRef.current
       if (fid && message.id) {
         setFeedbackMap(prev => ({ ...prev, [message.id]: fid }))
         pendingFeedbackIdRef.current = null
+      }
+      if (pendingCacheHitRef.current && message.id) {
+        setCacheHitMap(prev => ({ ...prev, [message.id]: true }))
+        pendingCacheHitRef.current = false
       }
     },
   })
@@ -109,7 +131,7 @@ export default function ChatInterface({
           <select
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
-            className="text-sm border border-kb-gray-border rounded-lg px-2.5 py-1.5 bg-kb-gray-light text-kb-navy focus:outline-none focus:ring-2 focus:ring-kb-yellow cursor-pointer font-medium"
+            className="text-sm border border-kb-gray-border rounded-lg px-2.5 py-1.5 bg-kb-gray-light text-kb-navy focus:outline-none focus:ring-2 focus:ring-kb-yellow cursor-pointer font-medium max-w-[140px]"
           >
             {models.length === 0 && <option value="">모델 로딩 중…</option>}
             {models.map((m) => (
@@ -132,19 +154,29 @@ export default function ChatInterface({
       {/* ── 채팅 영역 ─────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto scrollbar-none px-4 py-5 space-y-4">
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-4 py-16">
+          <div className="flex flex-col items-center justify-center h-full gap-4 py-10">
             <div className="w-16 h-16 rounded-2xl bg-kb-navy flex items-center justify-center shadow-card">
               <Bot className="w-8 h-8 text-kb-yellow" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 text-center">
               <p className="font-semibold text-kb-navy text-base">AI 금융 상담원</p>
               <p className="text-kb-gray text-sm leading-relaxed max-w-xs">
-                {onClose
-                  ? "상품에 관해 질문해보세요."
-                  : "궁금한 금융 상품에 대해 질문해보세요."
-                }
+                {onClose ? '상품에 관해 질문해보세요.' : '궁금한 금융 상품에 대해 질문해보세요.'}
               </p>
             </div>
+            {suggestions.length > 0 && (
+              <div className="w-full max-w-xs flex flex-col gap-2">
+                {suggestions.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => !isLoading && append({ role: 'user', content: q })}
+                    className="text-left text-xs px-3.5 py-2.5 rounded-xl border border-kb-gray-border bg-white text-kb-navy hover:bg-kb-gray-light active:scale-[0.98] transition-all leading-snug"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -168,6 +200,14 @@ export default function ChatInterface({
               )}
             >
               {m.role === 'assistant' ? (<>
+                {cacheHitMap[m.id] && (
+                  <span className="inline-flex items-center gap-1 mb-2 px-2 py-0.5 rounded-full bg-kb-yellow/20 text-kb-navy text-xs font-medium">
+                    <svg className="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                      <path d="M6 0a6 6 0 100 12A6 6 0 006 0zm.5 9H5.5V5.5h1V9zm0-4.5H5.5v-1h1v1z"/>
+                    </svg>
+                    캐시 응답
+                  </span>
+                )}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{

@@ -4,6 +4,15 @@ import { logger } from '@/lib/logger'
 import { traceable } from 'langsmith/traceable'
 import { retrieveChunks, chunksToContext, type RetrievedChunk } from '@/lib/rag'
 import { embedOne } from '@/lib/embeddings'
+import {
+  normalizeQuestion,
+  buildDocScope,
+  buildCacheKey,
+  lookupExact,
+  lookupSemantic,
+  saveCache,
+  buildCacheHitStream,
+} from '@/lib/rag-cache'
 import { trace, SpanStatusCode } from '@opentelemetry/api'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
@@ -35,6 +44,12 @@ export async function POST(req: Request) {
   const userQuestion = messages?.findLast(
     (m: { role: string }) => m.role === 'user',
   )?.content ?? ''
+
+  // ── RAG 캐시 메타 (직원 상품목록·manualContext는 캐시 제외) ───
+  const normalizedQ = normalizeQuestion(userQuestion)
+  const docScope    = buildDocScope(docCategory, docNames)
+  const cacheKey    = buildCacheKey(normalizedQ, docScope)
+  const canUseCache = useRag && !manualContext?.trim() && !isEmployee
 
   // ── 직원 전용: 업로드 문서 목록 ─────────────────────────────
   let uploadedDocsSection = ''
@@ -104,11 +119,51 @@ export async function POST(req: Request) {
   let finalContext = productListContext || (manualContext?.trim() ?? '')
   let ragChunkCount = 0
   let ragChunks: RetrievedChunk[] = []
+  let queryVec: number[] | null = null  // 캐시 저장 시 재사용
+
+  // ── [캐시 1단계] Exact match — embedOne 호출 전 ───────────────
+  if (canUseCache && userQuestion) {
+    const exactHit = await lookupExact(cacheKey).catch(() => null)
+    if (exactHit) {
+      const fb = await prisma.chatFeedback.create({
+        data: { chunkIds: exactHit.chunkIds, question: userQuestion, feedback: null },
+      })
+      logger.info({ event: 'rag_cache_hit', stage: 'exact', cacheId: exactHit.cacheId }, 'RAG 캐시 exact hit')
+      return new Response(buildCacheHitStream(exactHit.answer), {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Feedback-Id': fb.feedbackId,
+          'X-Cache': 'HIT',
+          'Access-Control-Expose-Headers': 'X-Feedback-Id, X-Cache',
+        },
+      })
+    }
+  }
 
   if (!finalContext && useRag) {
     try {
       if (userQuestion) {
-        const queryVec = await embedOne(userQuestion)
+        queryVec = await embedOne(userQuestion)
+
+        // ── [캐시 2단계] Semantic match — embedOne 완료 후 ─────────
+        if (canUseCache) {
+          const semanticHit = await lookupSemantic(queryVec, docScope).catch(() => null)
+          if (semanticHit) {
+            const fb = await prisma.chatFeedback.create({
+              data: { chunkIds: semanticHit.chunkIds, question: userQuestion, feedback: null },
+            })
+            logger.info({ event: 'rag_cache_hit', stage: 'semantic', cacheId: semanticHit.cacheId }, 'RAG 캐시 semantic hit')
+            return new Response(buildCacheHitStream(semanticHit.answer), {
+              headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'X-Feedback-Id': fb.feedbackId,
+                'X-Cache': 'HIT',
+                'Access-Control-Expose-Headers': 'X-Feedback-Id, X-Cache',
+              },
+            })
+          }
+        }
+
         ragChunks = await retrieveChunks(queryVec, {
           topK: 5,
           docNames: docNames?.length ? docNames : undefined,
@@ -240,6 +295,23 @@ ${LANGUAGE_RULE}`
     experimental_telemetry: { isEnabled: true, functionId: 'fin-mate-chat' },
   })
 
+  // RAG 캐시 저장 (fire-and-forget, 스트리밍 완료 후)
+  if (contextSource === 'rag' && queryVec && userQuestion) {
+    result.text.then(async (answer) => {
+      await saveCache({
+        cacheKey,
+        question:       normalizedQ,
+        docScope,
+        answer,
+        chunkIds:       ragChunks.map(c => c.id),
+        queryEmbedding: queryVec!,
+      })
+      logger.info({ event: 'rag_cache_saved', cacheKey }, 'RAG 캐시 저장')
+    }).catch((err) =>
+      logger.warn({ event: 'rag_cache_save_failed', err: String(err) }, 'RAG 캐시 저장 실패'),
+    )
+  }
+
   // RAG 평가 → Phoenix 어노테이션 (fire-and-forget, RAG 컨텍스트 사용 시에만)
   if (contextSource === 'rag' && spanId && userQuestion && finalContext) {
     result.text.then(async (answer) => {
@@ -310,7 +382,8 @@ ${LANGUAGE_RULE}`
     headers: {
       ...Object.fromEntries(streamResponse.headers.entries()),
       'X-Feedback-Id': feedbackRecord.feedbackId,
-      'Access-Control-Expose-Headers': 'X-Feedback-Id',
+      'X-Cache': 'MISS',
+      'Access-Control-Expose-Headers': 'X-Feedback-Id, X-Cache',
     },
   })
 }

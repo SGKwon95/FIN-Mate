@@ -13,6 +13,7 @@
 
 import { prisma } from './prisma'
 import { Prisma } from '@prisma/client'
+import { invalidateCacheByDocName } from './rag-cache'
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -117,11 +118,14 @@ export async function saveChunks(
   chunks: DocChunk[],
   embeddings: number[][],
 ): Promise<void> {
-  // 기존 동일 docName 청크 삭제 (재색인)
-  await prisma.documentChunk.deleteMany({ where: { docName: chunks[0].docName } })
+  const docName = chunks[0].docName
+
+  // 기존 동일 docName 청크 삭제 + 관련 캐시 무효화 (재색인 시 stale 답변 제거)
+  await prisma.documentChunk.deleteMany({ where: { docName } })
+  await invalidateCacheByDocName(docName)
 
   for (let i = 0; i < chunks.length; i++) {
-    const { content, docName, articleNum, sectionNum, metadata = {} } = chunks[i]
+    const { content, articleNum, sectionNum, metadata = {} } = chunks[i]
     const vec = `[${embeddings[i].join(',')}]`
     await prisma.$executeRaw`
       INSERT INTO document_chunks (doc_name, article_num, section_num, content, metadata, embedding)

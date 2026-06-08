@@ -132,7 +132,7 @@ export async function POST(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(30_000),
     })
     if (!res.ok) {
       const text = await res.text()
@@ -155,6 +155,20 @@ export async function POST(
     )
   }
 
+  // ── 점수 기반 3단계 결정 ────────────────────────────────────────────────────
+  // 800+ → 자동 승인 / 300 미만 → 자동 거절 / 그 외 → 직원 검토 필요
+  let applicationStatus: string
+  let decidedAt: Date | null = null
+  if (mlResult.score >= 800) {
+    applicationStatus = "APPROVED"
+    decidedAt = new Date()
+  } else if (mlResult.score < 300) {
+    applicationStatus = "REJECTED"
+    decidedAt = new Date()
+  } else {
+    applicationStatus = "PENDING_REVIEW"
+  }
+
   // ── 결과 DB 저장 ──────────────────────────────────────────────────────────────
   const updated = await prisma.loanApplication.update({
     where: { applicationId: id },
@@ -163,8 +177,8 @@ export async function POST(
       mlDecision: mlResult.decision,
       mlDefaultProb: mlResult.default_prob,
       mlScreenedAt: new Date(),
-      applicationStatus: mlResult.decision === "승인" ? "APPROVED" : "REJECTED",
-      decidedAt: new Date(),
+      applicationStatus,
+      ...(decidedAt ? { decidedAt } : {}),
     },
     select: {
       applicationId: true,

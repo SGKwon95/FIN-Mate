@@ -1031,3 +1031,23 @@ model ChatFeedback {
 
   @@map("chat_feedback")
 }
+
+// ============================================================
+// 32. RAG 응답 캐시 (2단계: exact hash + semantic similarity)
+// embedding 컬럼은 Unsupported — $queryRaw로만 접근
+// ============================================================
+model RagCache {
+  cacheId   String                      @id @default(dbgenerated("gen_random_uuid()")) @map("cache_id") @db.Uuid
+  cacheKey  String                      @unique @map("cache_key") @db.VarChar(64)
+  question  String
+  docScope  String                      @map("doc_scope") @db.Text
+  answer    String
+  chunkIds  String[]                    @map("chunk_ids") @db.Uuid
+  embedding Unsupported("vector(768)")?
+  hitCount  Int                         @default(0) @map("hit_count")
+  createdAt DateTime                    @default(now()) @map("created_at") @db.Timestamptz()
+  lastHitAt DateTime?                   @map("last_hit_at") @db.Timestamptz()
+
+  @@index([cacheKey], map: "idx_rag_cache_key")
+  @@map("rag_cache")
+}

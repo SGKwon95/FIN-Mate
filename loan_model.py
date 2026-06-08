@@ -1,6 +1,7 @@
 """
 인터넷뱅킹 대출심사 ML 분류 모델 (LendingClub 데이터 기반)
 타겟: 대출 부도 여부 예측 (0=정상상환, 1=부도)
+백엔드: PyTorch MLP + GPU (CUDA 사용 가능 시 자동 선택)
 """
 
 import pandas as pd
@@ -8,12 +9,30 @@ import numpy as np
 import warnings
 warnings.filterwarnings("ignore")
 
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import roc_auc_score, classification_report, confusion_matrix, roc_curve
+from loan_model_wrapper import LoanMLP, TorchLoanWrapper
+
+# ── 디바이스 선택 ──────────────────────────────────────────────────────────────
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+    print("GPU: Apple MPS")
+else:
+    DEVICE = torch.device("cpu")
+    print("GPU 없음 → CPU 학습")
+
 # ── 1. 데이터 로드 ──────────────────────────────────────────────────────────────
 # Kaggle에서 수동 다운로드: https://www.kaggle.com/datasets/wordsforthewise/lending-club
-# 파일명: accepted_2007_to_2018Q4.csv.gz (또는 .csv)
+# 파일명: accepted_2007_to_2018Q4.csv.gz → lending_club.csv.gz 로 복사
 
 KAGGLE_AVAILABLE = False
-DATA_PATH = "lending_club.csv"
+DATA_PATH = "lending_club.csv.gz"
 
 try:
     import kaggle
@@ -32,24 +51,24 @@ except Exception:
     print(f"Kaggle API 없음 → '{DATA_PATH}' 파일을 직접 준비해 주세요.")
     print("다운로드: https://www.kaggle.com/datasets/wordsforthewise/lending-club\n")
 
-# ── 2. 심사에 필요한 컬럼만 선택 ───────────────────────────────────────────────
+# ── 2. 피처 정의 ────────────────────────────────────────────────────────────────
 FEATURE_COLS = [
-    "loan_amnt",       # 신청 대출금액
-    "term",            # 대출기간 (36/60 months)
-    "int_rate",        # 금리
-    "annual_inc",      # 연소득
-    "dti",             # 부채비율 (DTI)
-    "fico_range_low",  # 신용점수 하한
-    "fico_range_high", # 신용점수 상한
-    "emp_length",      # 고용기간
-    "home_ownership",  # 주거형태
-    "purpose",         # 대출목적
-    "delinq_2yrs",     # 최근 2년 연체 건수
-    "inq_last_6mths",  # 최근 6개월 신용조회 수
-    "open_acc",        # 보유 신용계좌 수
-    "pub_rec",         # 공공기록 (파산 등)
-    "revol_util",      # 한도 대비 사용률
-    "total_acc",       # 총 신용계좌 수
+    "loan_amnt",
+    "term",
+    "int_rate",
+    "annual_inc",
+    "dti",
+    "fico_range_low",
+    "fico_range_high",
+    "emp_length",
+    "home_ownership",
+    "purpose",
+    "delinq_2yrs",
+    "inq_last_6mths",
+    "open_acc",
+    "pub_rec",
+    "revol_util",
+    "total_acc",
 ]
 TARGET_COL = "loan_status"
 
@@ -57,8 +76,7 @@ print("데이터 로드 중...")
 df_raw = pd.read_csv(DATA_PATH, usecols=FEATURE_COLS + [TARGET_COL], low_memory=False)
 print(f"원본 데이터: {df_raw.shape[0]:,}행 × {df_raw.shape[1]}열")
 
-# ── 3. 타겟 이진화 ─────────────────────────────────────────────────────────────
-# 상환완료 → 0, 부도(Charged Off / Default) → 1
+# ── 3. 타겟 이진화 ──────────────────────────────────────────────────────────────
 POSITIVE_STATUS = {"Charged Off", "Default", "Does not meet the credit policy. Status:Charged Off"}
 df_raw = df_raw[df_raw[TARGET_COL].isin(
     {"Fully Paid", "Does not meet the credit policy. Status:Fully Paid"} | POSITIVE_STATUS
@@ -70,8 +88,7 @@ df_raw.drop(columns=[TARGET_COL], inplace=True)
 print(f"유효 데이터: {len(df_raw):,}행")
 print(f"부도율: {df_raw['target'].mean():.2%}\n")
 
-# ── 4. 전처리 ──────────────────────────────────────────────────────────────────
-# 훈련 전 카테고리 맵 추출 (추론 서버에서 재현할 수 있도록 pkl에 저장)
+# ── 4. 전처리 ───────────────────────────────────────────────────────────────────
 def extract_category_maps(df: pd.DataFrame) -> dict:
     maps = {}
     for col in ["home_ownership", "purpose"]:
@@ -84,10 +101,8 @@ category_maps = extract_category_maps(df_raw)
 def preprocess(df: pd.DataFrame, cat_maps: dict | None = None) -> pd.DataFrame:
     df = df.copy()
 
-    # term: "36 months" → 36
     df["term"] = df["term"].str.extract(r"(\d+)").astype(float)
 
-    # emp_length: "10+ years" → 10, "< 1 year" → 0
     df["emp_length"] = (
         df["emp_length"]
         .str.replace(r"\+? years?", "", regex=True)
@@ -97,21 +112,17 @@ def preprocess(df: pd.DataFrame, cat_maps: dict | None = None) -> pd.DataFrame:
         .astype(float)
     )
 
-    # revol_util: "54.3%" → 54.3
     df["revol_util"] = df["revol_util"].astype(str).str.replace("%", "").replace("nan", np.nan).astype(float)
 
-    # 신용점수 평균
     df["fico_avg"] = (df["fico_range_low"] + df["fico_range_high"]) / 2
     df.drop(columns=["fico_range_low", "fico_range_high"], inplace=True)
 
-    # 범주형 인코딩 (맵 있으면 결정론적 변환, 없으면 cat.codes)
     for col in ["home_ownership", "purpose"]:
         if cat_maps and col in cat_maps:
             df[col] = df[col].map(cat_maps[col]).fillna(-1).astype(int)
         else:
             df[col] = df[col].astype("category").cat.codes
 
-    # 수치형 결측치 → 중앙값
     num_cols = df.select_dtypes(include="number").columns.difference(["target"])
     df[num_cols] = df[num_cols].fillna(df[num_cols].median())
 
@@ -131,49 +142,95 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 print(f"Train: {len(X_train):,}  Test: {len(X_test):,}\n")
 
-# ── 6. 모델 학습 (LightGBM) ────────────────────────────────────────────────────
-try:
-    import lightgbm as lgb
-    MODEL_NAME = "LightGBM"
+# 피처 스케일링 (신경망 필수)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train).astype(np.float32)
+X_test_scaled = scaler.transform(X_test).astype(np.float32)
 
-    model = lgb.LGBMClassifier(
-        n_estimators=500,
-        learning_rate=0.05,
-        num_leaves=63,
-        max_depth=-1,
-        scale_pos_weight=(y_train == 0).sum() / (y_train == 1).sum(),  # 불균형 보정
-        random_state=42,
-        n_jobs=-1,
-        verbose=-1,
-    )
-except ImportError:
-    from sklearn.ensemble import GradientBoostingClassifier
-    MODEL_NAME = "GradientBoosting (LightGBM 없음 → fallback)"
-    model = GradientBoostingClassifier(n_estimators=200, random_state=42)
+# ── 6. 모델 정의 (loan_model_wrapper.py에서 import) ────────────────────────────
+N_FEATURES = X_train_scaled.shape[1]
 
-print(f"모델 학습 중: {MODEL_NAME}...")
-model.fit(X_train, y_train)
-print("학습 완료\n")
+# ── 7. 학습 ─────────────────────────────────────────────────────────────────────
+BATCH_SIZE = 4096
+EPOCHS = 30
+LR = 1e-3
+PATIENCE = 5  # 조기 종료
 
-# ── 7. 평가 ────────────────────────────────────────────────────────────────────
-from sklearn.metrics import (
-    roc_auc_score, classification_report, confusion_matrix, roc_curve
+# 클래스 불균형 보정 (부도 비율 낮으므로 pos_weight 사용)
+pos_ratio = (y_train == 0).sum() / (y_train == 1).sum()
+pos_weight = torch.tensor([pos_ratio], dtype=torch.float32).to(DEVICE)
+
+train_ds = TensorDataset(
+    torch.tensor(X_train_scaled).to(DEVICE),
+    torch.tensor(y_train.values, dtype=torch.float32).to(DEVICE),
 )
+train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
 
-y_prob = model.predict_proba(X_test)[:, 1]
+val_tensor_X = torch.tensor(X_test_scaled).to(DEVICE)
+val_tensor_y = torch.tensor(y_test.values, dtype=torch.float32).to(DEVICE)
+
+model = LoanMLP(N_FEATURES).to(DEVICE)
+criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=1e-4)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=2)
+
+print(f"모델 학습 중 (PyTorch MLP, {DEVICE})...")
+best_auc = 0.0
+best_state = None
+no_improve = 0
+
+for epoch in range(1, EPOCHS + 1):
+    model.train()
+    total_loss = 0.0
+    for X_batch, y_batch in train_loader:
+        optimizer.zero_grad()
+        logits = model(X_batch)
+        loss = criterion(logits, y_batch)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+
+    # 검증
+    model.eval()
+    with torch.no_grad():
+        val_logits = model(val_tensor_X)
+        val_probs = torch.sigmoid(val_logits).cpu().numpy()
+    val_auc = roc_auc_score(y_test, val_probs)
+    scheduler.step(val_auc)
+
+    avg_loss = total_loss / len(train_loader)
+    lr_now = optimizer.param_groups[0]["lr"]
+    print(f"  Epoch {epoch:2d}/{EPOCHS}  loss={avg_loss:.4f}  val_AUC={val_auc:.4f}  lr={lr_now:.2e}")
+
+    if val_auc > best_auc:
+        best_auc = val_auc
+        best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+        no_improve = 0
+    else:
+        no_improve += 1
+        if no_improve >= PATIENCE:
+            print(f"  조기 종료 (patience={PATIENCE})")
+            break
+
+model.load_state_dict(best_state)
+model.eval()
+print(f"\n학습 완료 — best val AUC: {best_auc:.4f}\n")
+
+# ── 8. 평가 ─────────────────────────────────────────────────────────────────────
+with torch.no_grad():
+    y_prob = torch.sigmoid(model(val_tensor_X)).cpu().numpy()
+
 auc = roc_auc_score(y_test, y_prob)
-
-# KS 통계량 (은행 심사에서 모델 변별력 지표로 사용)
 fpr, tpr, thresholds = roc_curve(y_test, y_prob)
 ks_stat = max(tpr - fpr)
-ks_threshold = thresholds[np.argmax(tpr - fpr)]
+ks_threshold = float(thresholds[np.argmax(tpr - fpr)])
 
 print("=" * 50)
 print(f"  AUC-ROC  : {auc:.4f}")
 print(f"  KS 통계량 : {ks_stat:.4f}  (임계값={ks_threshold:.4f})")
 print("=" * 50)
-print(f"\n[ 분류 리포트 (threshold={ks_threshold:.2f}) ]")
 y_pred = (y_prob >= ks_threshold).astype(int)
+print(f"\n[ 분류 리포트 (threshold={ks_threshold:.2f}) ]")
 print(classification_report(y_test, y_pred, target_names=["정상상환", "부도"]))
 
 cm = confusion_matrix(y_test, y_pred)
@@ -181,27 +238,33 @@ print("[ 혼동행렬 ]")
 print(f"  정상→정상승인: {cm[0,0]:,}   정상→부도거절(FP): {cm[0,1]:,}")
 print(f"  부도→정상승인(FN): {cm[1,0]:,}   부도→부도거절: {cm[1,1]:,}")
 
-# ── 8. 피처 중요도 ─────────────────────────────────────────────────────────────
-print("\n[ 피처 중요도 Top 10 ]")
-importance = pd.Series(model.feature_importances_, index=X.columns)
-print(importance.sort_values(ascending=False).head(10).to_string())
+# ── 9. 피처 중요도 (Permutation) ───────────────────────────────────────────────
+print("\n[ 피처 중요도 Top 10 — Permutation Importance ]")
+base_auc = auc
+importances = {}
+for i, col in enumerate(X.columns):
+    X_perm = X_test_scaled.copy()
+    np.random.shuffle(X_perm[:, i])
+    with torch.no_grad():
+        perm_prob = torch.sigmoid(model(torch.tensor(X_perm).to(DEVICE))).cpu().numpy()
+    importances[col] = base_auc - roc_auc_score(y_test, perm_prob)
 
-# ── 9. 심사 예측 함수 (실서비스 연동용) ───────────────────────────────────────
+imp_series = pd.Series(importances).sort_values(ascending=False)
+print(imp_series.head(10).to_string())
+
+# ── 10. sklearn 호환 래퍼 (loan_model_wrapper.py에서 import) ───────────────────
+
+# ── 11. 심사 예측 함수 (로컬 테스트용) ────────────────────────────────────────
+wrapper = TorchLoanWrapper(model, scaler, list(X.columns), DEVICE)
+
 def predict_loan(applicant: dict, threshold: float = ks_threshold) -> dict:
-    """
-    applicant: 신청자 정보 dict
-    반환: {"decision": "승인"/"거절", "default_prob": float, "score": int}
-    """
     df_input = pd.DataFrame([applicant])
     df_input = preprocess(df_input, category_maps)
-
     for col in X.columns:
         if col not in df_input.columns:
             df_input[col] = 0
-
-    prob = model.predict_proba(df_input[X.columns])[0][1]
-    score = int(1000 - prob * 1000)  # 부도확률 낮을수록 점수 높음
-
+    prob = wrapper.predict_proba(df_input)[0][1]
+    score = int(1000 - prob * 1000)
     return {
         "decision": "거절" if prob >= threshold else "승인",
         "default_prob": round(float(prob), 4),
@@ -209,7 +272,6 @@ def predict_loan(applicant: dict, threshold: float = ks_threshold) -> dict:
     }
 
 
-# 사용 예시
 sample = {
     "loan_amnt": 15000,
     "term": "36 months",
@@ -235,10 +297,10 @@ print(f"  판정: {result['decision']}")
 print(f"  부도확률: {result['default_prob']:.2%}")
 print(f"  신용점수: {result['score']}")
 
-# ── 10. 모델 저장 ──────────────────────────────────────────────────────────────
+# ── 12. 모델 저장 ──────────────────────────────────────────────────────────────
 import joblib
 joblib.dump({
-    "model": model,
+    "model": wrapper,          # TorchLoanWrapper (predict_proba 인터페이스)
     "threshold": ks_threshold,
     "features": list(X.columns),
     "category_maps": category_maps,
