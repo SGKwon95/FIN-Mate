@@ -9,6 +9,9 @@
    - 2-1. 문서 업로드 · 인덱싱
    - 2-2. 채팅 질문 처리
    - 2-3. 피드백 반영
+3. [대출 심사 흐름](#3-대출-심사-흐름)
+   - 3-1. 고객 신청 → ML 심사
+   - 3-2. 직원 최종 결정 (PENDING_REVIEW)
 
 ---
 
@@ -322,6 +325,99 @@ sequenceDiagram
 검색 정렬 기준: embedding <=> queryVec / NULLIF(quality_score, 0)
   → quality_score가 클수록 거리값이 작아져 상위 랭크
 ```
+
+---
+
+## 3. 대출 심사 흐름
+
+### 3-1. 고객 신청 → ML 심사
+
+```mermaid
+sequenceDiagram
+    actor 고객
+    participant UI as LoanApplyWizard.tsx
+    participant API_APPLY as POST /api/loan-applications
+    participant API_SCREEN as POST /api/loan-applications/[id]/screen
+    participant DB as PostgreSQL
+    participant ML as ML Inference Server<br/>FastAPI :8001
+    participant PHOENIX as Arize Phoenix<br/>:6006
+
+    고객->>UI: 대출 상품 선택 → 신청 정보 입력
+    UI->>API_APPLY: { productId, requestedAmount, ... }
+    API_APPLY->>DB: LoanApplication 생성<br/>applicationStatus: SUBMITTED
+    API_APPLY-->>UI: { applicationId }
+
+    UI->>API_SCREEN: POST (applicationId)
+    API_SCREEN->>DB: 신청 정보 조회<br/>고객 계좌·거래내역 집계
+
+    API_SCREEN->>ML: POST /predict<br/>{ annual_inc, dti, fico_range_low, ... }
+    ML->>PHOENIX: OTel 스팬 전송 (BatchSpanProcessor)
+    ML-->>API_SCREEN: { score, decision, default_prob }
+
+    Note over API_SCREEN: 3-tier 분기
+    alt score ≥ 800 (자동 승인)
+        API_SCREEN->>DB: applicationStatus: APPROVED<br/>decidedAt: now()
+    else score < 300 (자동 거절)
+        API_SCREEN->>DB: applicationStatus: REJECTED<br/>decidedAt: now()
+    else 300 ≤ score < 800 (직원 검토)
+        API_SCREEN->>DB: applicationStatus: PENDING_REVIEW<br/>decidedAt: null
+    end
+
+    API_SCREEN-->>UI: { applicationStatus, mlScore, mlDecision, ... }
+
+    alt APPROVED
+        UI-->>고객: 초록 카드 "승인"
+    else REJECTED
+        UI-->>고객: 빨간 카드 "거절"
+    else PENDING_REVIEW
+        UI-->>고객: 주황 카드 "검토 중"<br/>"1~2 영업일 내 결과 안내"
+    end
+```
+
+---
+
+### 3-2. 직원 최종 결정 (PENDING_REVIEW)
+
+```mermaid
+sequenceDiagram
+    actor 직원
+    participant UI as LoanReviewClient.tsx
+    participant PAGE as /loan-review
+    participant API_DECIDE as POST /api/loan-applications/[id]/decide
+    participant DB as PostgreSQL
+
+    직원->>PAGE: /loan-review 접근
+    PAGE->>DB: LoanApplication 목록 조회<br/>status IN [SUBMITTED, PENDING_REVIEW, APPROVED, REJECTED]
+    DB-->>PAGE: 신청 목록
+    PAGE-->>직원: 3개 섹션 렌더링<br/>ML 심사 대기 / 직원 검토 필요 / 심사 완료
+
+    Note over 직원,UI: SUBMITTED 항목
+    직원->>UI: "ML 심사 실행" 클릭
+    UI->>API_DECIDE: POST /screen (applicationId)
+    Note over UI: runScreening() 호출<br/>→ 3-1 흐름과 동일
+
+    Note over 직원,UI: PENDING_REVIEW 항목
+    직원->>UI: 카드 펼침 → ML 점수 확인
+    직원->>UI: "승인" 또는 "거절" 클릭
+    UI->>API_DECIDE: POST { decision: APPROVED|REJECTED }
+
+    API_DECIDE->>DB: isEmployee 검증 (403 차단)
+    API_DECIDE->>DB: applicationStatus === PENDING_REVIEW 확인 (409 차단)
+    API_DECIDE->>DB: applicationStatus: decision<br/>decidedAt: now()
+    API_DECIDE-->>UI: { applicationStatus, decidedAt }
+
+    UI-->>직원: 카드 상태 즉시 업데이트<br/>→ "심사 완료" 섹션으로 이동
+```
+
+**관련 파일**
+| 파일 | 역할 |
+|------|------|
+| `app/(main)/products/[productId]/loan-apply/LoanApplyWizard.tsx` | 고객 신청 wizard + 결과 화면 |
+| `app/api/loan-applications/route.ts` | 신청 생성 |
+| `app/api/loan-applications/[id]/screen/route.ts` | ML 심사 + 3-tier 분기 |
+| `app/api/loan-applications/[id]/decide/route.ts` | 직원 최종 결정 |
+| `app/(main)/loan-review/LoanReviewClient.tsx` | 직원 심사 화면 |
+| `loan_inference_server.py` | FastAPI ML 추론 서버 (PyTorch + Phoenix OTel) |
 
 ---
 
