@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ChevronRight, Shield, TrendingUp, Percent, Home } from "lucide-react";
+import { ChevronRight, Shield, Percent, Home, Sparkles } from "lucide-react";
 
 type ProductItem = {
   productId: string;
   productName: string;
   productTypeCode: string;
+  topReason?: string;
 };
 
 const ICON_MAP = {
@@ -58,8 +59,10 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function ProductBanner({
   products,
+  personalized = false,
 }: {
   products: ProductItem[];
+  personalized?: boolean;
 }) {
   const display = products.length > 0 ? products.slice(0, 4) : STATIC_PRODUCTS;
 
@@ -67,12 +70,17 @@ export default function ProductBanner({
     <section className="bg-white rounded-2xl shadow-card overflow-hidden">
       {/* 헤더 */}
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-kb-gray-border">
-        <h2 className="text-kb-navy font-bold text-base">추천 상품</h2>
+        <div className="flex items-center gap-1.5">
+          {personalized && <Sparkles className="w-3.5 h-3.5 text-kb-yellow" />}
+          <h2 className="text-kb-navy font-bold text-base">
+            {personalized ? '맞춤 추천' : '추천 상품'}
+          </h2>
+        </div>
         <Link
-          href="/products"
+          href={personalized ? "/recommend" : "/products"}
           className="flex items-center gap-0.5 text-kb-gray text-xs hover:text-kb-navy transition-colors"
         >
-          전체보기
+          {personalized ? '더 보기' : '전체보기'}
           <ChevronRight className="w-3.5 h-3.5" />
         </Link>
       </div>
@@ -107,6 +115,11 @@ export default function ProductBanner({
               >
                 {product.productName}
               </p>
+              {product.topReason && (
+                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/20 text-white/80 self-start">
+                  {product.topReason}
+                </span>
+              )}
             </Link>
           );
         })}

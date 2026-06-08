@@ -17,7 +17,8 @@ import {
   TrendingUp,
   Percent,
   RefreshCw,
-  Calculator,
+  BarChart2,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -44,19 +45,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "조회",
     icon: Search,
     children: [
-      { href: "/accounts",     icon: CreditCard, label: "내 계좌" },
-      { href: "/transactions", icon: History,    label: "거래내역" },
+      { href: "/accounts",     icon: CreditCard,  label: "내 계좌" },
+      { href: "/transactions", icon: History,     label: "거래내역" },
+      { href: "/analysis",     icon: BarChart2,   label: "소비분석" },
     ],
   },
-  {
-    label: "금리",
-    icon: Percent,
-    basePath: "/rates",
-    children: [
-      { href: "/rates",          icon: Percent,     label: "적용금리" },
-      { href: "/rates/estimate", icon: Calculator,  label: "예상금리" },
-    ],
-  },
+  { href: "/rates", icon: Percent, label: "금리" },
   {
     label: "이체",
     icon: ArrowLeftRight,
@@ -70,9 +64,10 @@ const NAV_ITEMS: NavItem[] = [
     icon: TrendingUp,
     basePath: "/products",
     children: [
-      { href: "/products/deposit", icon: Landmark, label: "정기예금" },
+      { href: "/products/deposit", icon: Landmark,  label: "정기예금" },
       { href: "/products/savings", icon: PiggyBank, label: "적금" },
       { href: "/products/loan",    icon: Banknote,  label: "대출" },
+      { href: "/recommend",        icon: Sparkles,  label: "맞춤추천" },
     ],
   },
   { href: "/settings", icon: Settings, label: "설정" },

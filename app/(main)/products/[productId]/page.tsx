@@ -1,9 +1,9 @@
 import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ChevronRight, Shield, CheckCircle } from "lucide-react"
-import { formatKRW } from "@/lib/formatters"
+import { ChevronRight, Shield } from "lucide-react"
 import ChatPopup from "@/components/chat/ChatPopup"
+import ProductDetailTabs from "@/components/products/ProductDetailTabs"
 import type { Metadata } from "next"
 
 export async function generateMetadata({
@@ -40,17 +40,27 @@ export default async function ProductDetailPage({
         select: {
           transactionType: true,
           interestType: true,
+          rateType: true,
           minAmount: true,
           maxAmount: true,
           minPeriodMonths: true,
           maxPeriodMonths: true,
+          earlyWithdrawalPenaltyRate: true,
+          prepaymentAllowed: true,
+          deferralAllowed: true,
         },
       },
       loanDetail: {
         select: {
+          loanType: true,
+          baseRateType: true,
+          interestType: true,
+          maxLtvRatio: true,
+          maxDtiRatio: true,
           collateralRequired: true,
           collateralType: true,
-          maxLtvRatio: true,
+          lienAvailable: true,
+          minLoanAmount: true,
           maxLoanAmount: true,
           maxLoanPeriodMonths: true,
           repaymentMethod: true,
@@ -60,14 +70,23 @@ export default async function ProductDetailPage({
         },
       },
       productRates: {
-        where: { rateType: "BASE" },
-        orderBy: { effectiveFrom: "desc" },
-        take: 1,
-        select: { rate: true },
+        orderBy: [{ rateType: "asc" }, { effectiveFrom: "desc" }],
+        select: { rateType: true, rateStructure: true, rate: true, effectiveFrom: true },
+      },
+      productRateTiers: {
+        orderBy: { minValue: "asc" },
+        select: { tierType: true, minValue: true, maxValue: true, rate: true },
       },
       productRateBenefits: {
-        select: { benefitName: true, benefitRate: true },
-        take: 10,
+        select: { benefitName: true, benefitRate: true, conditionDescription: true },
+      },
+      productFees: {
+        orderBy: { feeType: "asc" },
+        select: { feeType: true, channel: true, feeAmount: true, feeRate: true, waiverCondition: true },
+      },
+      productTerms: {
+        orderBy: { effectiveDate: "desc" },
+        select: { termsId: true, termsType: true, version: true, effectiveDate: true, contentUrl: true },
       },
     },
   })
@@ -76,12 +95,13 @@ export default async function ProductDetailPage({
 
   const isDeposit = product.productTypeCode === "DEPOSIT"
   const isLoan = product.productTypeCode === "LOAN"
-  const baseRate = Number(product.productRates[0]?.rate ?? 0)
-  const rateStr = baseRate > 0 ? `연 ${(baseRate * 100).toFixed(2)}%` : null
-
   const transactionType = product.depositDetail?.transactionType
   const isSavings = transactionType === "SAVINGS"
   const isTimeDeposit = transactionType === "TIME_DEPOSIT"
+
+  // 헤더용 기준금리
+  const baseRate = product.productRates.find((r) => r.rateType === "BASE")
+  const rateStr = baseRate ? `연 ${(Number(baseRate.rate) * 100).toFixed(2)}%` : null
 
   const subscribeHref = isTimeDeposit
     ? `/products/${productId}/subscribe`
@@ -96,65 +116,118 @@ export default async function ProductDetailPage({
     ? [`${minioBase}/terms/savings.html`]
     : []
 
+  // Decimal → number 직렬화
   const depositDetail = product.depositDetail
-  const loanDetail = product.loanDetail
+    ? {
+        transactionType: product.depositDetail.transactionType,
+        interestType: product.depositDetail.interestType,
+        rateType: product.depositDetail.rateType,
+        minAmount: product.depositDetail.minAmount != null ? Number(product.depositDetail.minAmount) : null,
+        maxAmount: product.depositDetail.maxAmount != null ? Number(product.depositDetail.maxAmount) : null,
+        minPeriodMonths: product.depositDetail.minPeriodMonths,
+        maxPeriodMonths: product.depositDetail.maxPeriodMonths,
+        earlyWithdrawalPenaltyRate:
+          product.depositDetail.earlyWithdrawalPenaltyRate != null
+            ? Number(product.depositDetail.earlyWithdrawalPenaltyRate)
+            : null,
+        prepaymentAllowed: product.depositDetail.prepaymentAllowed,
+        deferralAllowed: product.depositDetail.deferralAllowed,
+      }
+    : null
 
-  // 챗봇 컨텍스트: 현재 상품 메타데이터 (약관 문서 앞에 삽입됨)
+  const loanDetail = product.loanDetail
+    ? {
+        loanType: product.loanDetail.loanType,
+        baseRateType: product.loanDetail.baseRateType,
+        interestType: product.loanDetail.interestType,
+        maxLtvRatio: product.loanDetail.maxLtvRatio != null ? Number(product.loanDetail.maxLtvRatio) : null,
+        maxDtiRatio: product.loanDetail.maxDtiRatio != null ? Number(product.loanDetail.maxDtiRatio) : null,
+        collateralRequired: product.loanDetail.collateralRequired,
+        collateralType: product.loanDetail.collateralType,
+        lienAvailable: product.loanDetail.lienAvailable,
+        minLoanAmount: product.loanDetail.minLoanAmount != null ? Number(product.loanDetail.minLoanAmount) : null,
+        maxLoanAmount: product.loanDetail.maxLoanAmount != null ? Number(product.loanDetail.maxLoanAmount) : null,
+        maxLoanPeriodMonths: product.loanDetail.maxLoanPeriodMonths,
+        repaymentMethod: product.loanDetail.repaymentMethod,
+        earlyRepaymentAllowed: product.loanDetail.earlyRepaymentAllowed,
+        earlyRepaymentFeeRate:
+          product.loanDetail.earlyRepaymentFeeRate != null
+            ? Number(product.loanDetail.earlyRepaymentFeeRate)
+            : null,
+        overdueInterestRate:
+          product.loanDetail.overdueInterestRate != null
+            ? Number(product.loanDetail.overdueInterestRate)
+            : null,
+      }
+    : null
+
+  const productRates = product.productRates.map((r) => ({
+    rateType: r.rateType,
+    rateStructure: r.rateStructure,
+    rate: Number(r.rate),
+    effectiveFrom: r.effectiveFrom.toISOString().slice(0, 10),
+  }))
+
+  const productRateTiers = product.productRateTiers.map((t) => ({
+    tierType: t.tierType,
+    minValue: t.minValue != null ? Number(t.minValue) : null,
+    maxValue: t.maxValue != null ? Number(t.maxValue) : null,
+    rate: Number(t.rate),
+  }))
+
+  const productRateBenefits = product.productRateBenefits.map((b) => ({
+    benefitName: b.benefitName,
+    benefitRate: Number(b.benefitRate),
+    conditionDescription: b.conditionDescription,
+  }))
+
+  const productFees = product.productFees.map((f) => ({
+    feeType: f.feeType,
+    channel: f.channel,
+    feeAmount: f.feeAmount != null ? Number(f.feeAmount) : null,
+    feeRate: f.feeRate != null ? Number(f.feeRate) : null,
+    waiverCondition: f.waiverCondition,
+  }))
+
+  const productTerms = product.productTerms.map((t) => ({
+    termsId: t.termsId,
+    termsType: t.termsType,
+    version: t.version,
+    effectiveDate: t.effectiveDate,
+    contentUrl: t.contentUrl,
+  }))
+
+  // 챗봇 컨텍스트
+  const productTypeLabel = isTimeDeposit ? "정기예금" : isSavings ? "적금" : isLoan ? "대출" : product.productTypeCode
   const productLines: string[] = [
     `[현재 조회 중인 상품]`,
     `상품명: ${product.productName}`,
-    `종류: ${isTimeDeposit ? "정기예금" : isSavings ? "적금" : isLoan ? "대출" : product.productTypeCode}`,
+    `종류: ${productTypeLabel}`,
   ]
   if (rateStr) productLines.push(`기준금리: ${rateStr} (세전)`)
-  if (depositDetail) {
-    if (depositDetail.minPeriodMonths != null && depositDetail.maxPeriodMonths != null) {
-      productLines.push(
-        depositDetail.minPeriodMonths === depositDetail.maxPeriodMonths
-          ? `가입기간: ${depositDetail.minPeriodMonths}개월`
-          : `가입기간: ${depositDetail.minPeriodMonths}~${depositDetail.maxPeriodMonths}개월`
-      )
-    }
-    if (depositDetail.minAmount != null)
-      productLines.push(`${isSavings ? "최소 월 납입금" : "최소 예치금액"}: ${formatKRW(Number(depositDetail.minAmount))}`)
-    if (depositDetail.maxAmount != null)
-      productLines.push(`${isSavings ? "최대 월 납입금" : "최대 예치금액"}: ${formatKRW(Number(depositDetail.maxAmount))}`)
-    if (depositDetail.interestType)
-      productLines.push(`이자 방식: ${depositDetail.interestType === "SIMPLE" ? "단리" : "복리"}`)
+  if (depositDetail?.minPeriodMonths != null && depositDetail.maxPeriodMonths != null) {
+    productLines.push(
+      depositDetail.minPeriodMonths === depositDetail.maxPeriodMonths
+        ? `가입기간: ${depositDetail.minPeriodMonths}개월`
+        : `가입기간: ${depositDetail.minPeriodMonths}~${depositDetail.maxPeriodMonths}개월`
+    )
   }
-  if (loanDetail) {
-    if (loanDetail.maxLoanAmount != null)
-      productLines.push(`최대 대출한도: ${formatKRW(Number(loanDetail.maxLoanAmount))}`)
-    if (loanDetail.maxLoanPeriodMonths != null)
-      productLines.push(`최대 대출기간: ${loanDetail.maxLoanPeriodMonths}개월`)
-  }
+  if (depositDetail?.minAmount != null)
+    productLines.push(`${isSavings ? "최소 월 납입금" : "최소 예치금액"}: ${depositDetail.minAmount.toLocaleString("ko-KR")}원`)
+  if (loanDetail?.maxLoanAmount != null)
+    productLines.push(`최대 대출한도: ${loanDetail.maxLoanAmount.toLocaleString("ko-KR")}원`)
   if (product.isDepositInsured)
     productLines.push(`예금자보호: 최고 ${Number(product.depositInsuranceLimit).toLocaleString("ko-KR")}원`)
-  if (product.productRateBenefits.length > 0)
-    productLines.push(`우대혜택: ${product.productRateBenefits.map((b) => b.benefitName).join(", ")}`)
+  if (productRateBenefits.length > 0)
+    productLines.push(`우대혜택: ${productRateBenefits.map((b) => b.benefitName).join(", ")}`)
 
   const productContext = productLines.join("\n")
 
-  const COLLATERAL_LABEL: Record<string, string> = {
-    REAL_ESTATE: "부동산",
-    JEONSE_RIGHT: "전세권",
-  }
-  const REPAYMENT_LABEL: Record<string, string> = {
-    EQUAL_INSTALLMENT: "원리금균등상환",
-    EQUAL_PRINCIPAL: "원금균등상환",
-    BULLET: "만기일시상환",
-  }
-  const INTEREST_LABEL: Record<string, string> = {
-    SIMPLE: "단리",
-    COMPOUND: "복리",
-  }
-
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="max-w-lg mx-auto px-4 py-6 pb-28 lg:pb-6">
       {/* 헤더 배너 */}
       <div className={`rounded-2xl p-5 mb-5 text-white ${isLoan ? "bg-gradient-to-br from-blue-700 to-blue-500" : "bg-kb-navy"}`}>
-        <p className="text-white/60 text-xs mb-1">
-          {isTimeDeposit ? "정기예금" : isSavings ? "적금" : isLoan ? "대출" : product.productTypeCode}
-        </p>
+        <p className="text-white/60 text-xs mb-1">{productTypeLabel}</p>
         <p className="font-bold text-lg leading-snug">{product.productName}</p>
 
         {rateStr && (
@@ -167,7 +240,9 @@ export default async function ProductDetailPage({
         {isLoan && loanDetail?.maxLtvRatio && (
           <div className="mt-3">
             <span className="text-white/80 text-sm">LTV 최대 </span>
-            <span className="text-white font-bold text-xl">{(Number(loanDetail.maxLtvRatio) * 100).toFixed(0)}%</span>
+            <span className="text-white font-bold text-xl">
+              {(loanDetail.maxLtvRatio * 100).toFixed(0)}%
+            </span>
           </div>
         )}
 
@@ -181,89 +256,28 @@ export default async function ProductDetailPage({
         )}
       </div>
 
-      {/* 상세 정보 */}
-      <div className="bg-white rounded-2xl shadow-card divide-y divide-kb-gray-border mb-4">
-        {/* 예금·적금 정보 */}
-        {depositDetail && (
-          <>
-            {depositDetail.minPeriodMonths != null && depositDetail.maxPeriodMonths != null && (
-              <Row label="가입 기간">
-                {depositDetail.minPeriodMonths === depositDetail.maxPeriodMonths
-                  ? `${depositDetail.minPeriodMonths}개월`
-                  : `${depositDetail.minPeriodMonths}~${depositDetail.maxPeriodMonths}개월`}
-              </Row>
-            )}
-            {depositDetail.minAmount != null && (
-              <Row label={isSavings ? "최소 월 납입금" : "최소 가입금액"}>
-                {formatKRW(Number(depositDetail.minAmount))}
-              </Row>
-            )}
-            {depositDetail.maxAmount != null && (
-              <Row label={isSavings ? "최대 월 납입금" : "최대 가입금액"}>
-                {formatKRW(Number(depositDetail.maxAmount))}
-              </Row>
-            )}
-            {depositDetail.interestType && (
-              <Row label="이자 방식">{INTEREST_LABEL[depositDetail.interestType] ?? depositDetail.interestType}</Row>
-            )}
-          </>
-        )}
-
-        {/* 대출 정보 */}
-        {loanDetail && (
-          <>
-            {loanDetail.maxLoanAmount != null && (
-              <Row label="최대 대출한도">{formatKRW(Number(loanDetail.maxLoanAmount))}</Row>
-            )}
-            {loanDetail.maxLoanPeriodMonths != null && (
-              <Row label="최대 대출기간">{loanDetail.maxLoanPeriodMonths}개월</Row>
-            )}
-            {loanDetail.collateralType && (
-              <Row label="담보 유형">
-                {COLLATERAL_LABEL[loanDetail.collateralType] ?? loanDetail.collateralType}
-              </Row>
-            )}
-            {loanDetail.repaymentMethod && (
-              <Row label="상환 방식">
-                {REPAYMENT_LABEL[loanDetail.repaymentMethod] ?? loanDetail.repaymentMethod}
-              </Row>
-            )}
-            {loanDetail.earlyRepaymentFeeRate != null && Number(loanDetail.earlyRepaymentFeeRate) > 0 && (
-              <Row label="중도상환수수료">
-                {(Number(loanDetail.earlyRepaymentFeeRate) * 100).toFixed(2)}%
-              </Row>
-            )}
-            {loanDetail.overdueInterestRate != null && Number(loanDetail.overdueInterestRate) > 0 && (
-              <Row label="최고 연체이자율">
-                연 {(Number(loanDetail.overdueInterestRate) * 100).toFixed(1)}%
-              </Row>
-            )}
-          </>
-        )}
+      {/* 탭 섹션 */}
+      <div className="mb-6">
+        <ProductDetailTabs
+          description={product.description}
+          isDepositInsured={product.isDepositInsured}
+          depositInsuranceLimit={
+            product.depositInsuranceLimit != null ? Number(product.depositInsuranceLimit) : null
+          }
+          depositDetail={depositDetail}
+          loanDetail={loanDetail}
+          productRates={productRates}
+          productRateTiers={productRateTiers}
+          productRateBenefits={productRateBenefits}
+          productFees={productFees}
+          productTerms={productTerms}
+          termsUrls={termsUrls}
+          isDeposit={isDeposit}
+          isLoan={isLoan}
+          isSavings={isSavings}
+          isTimeDeposit={isTimeDeposit}
+        />
       </div>
-
-      {/* 우대금리 혜택 */}
-      {product.productRateBenefits.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-card p-4 mb-4">
-          <p className="text-xs font-semibold text-kb-gray mb-3">우대 혜택</p>
-          <ul className="space-y-2">
-            {product.productRateBenefits.map((b, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <CheckCircle className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
-                <span className="text-xs text-kb-navy leading-relaxed">{b.benefitName}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* 상품 설명 */}
-      {product.description && (
-        <div className="bg-white rounded-2xl shadow-card p-4 mb-6">
-          <p className="text-xs font-semibold text-kb-gray mb-2">상품 안내</p>
-          <p className="text-xs text-kb-navy leading-relaxed whitespace-pre-line">{product.description}</p>
-        </div>
-      )}
 
       {/* CTA */}
       {subscribeHref ? (
@@ -283,15 +297,6 @@ export default async function ProductDetailPage({
       ) : null}
 
       <ChatPopup contextUrls={termsUrls} productContext={productContext} />
-    </div>
-  )
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between px-4 py-3">
-      <span className="text-xs text-kb-gray">{label}</span>
-      <span className="text-sm font-semibold text-kb-navy">{children}</span>
     </div>
   )
 }

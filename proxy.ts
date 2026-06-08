@@ -8,11 +8,12 @@ const { auth } = NextAuth(authConfig)
 const CUSTOMER_ONLY = [
   "/dashboard", "/accounts", "/transactions",
   "/transfer", "/auto-transfer", "/products", "/rates", "/settings",
+  "/analysis", "/recommend",
 ]
 // 직원 전용 경로 — 고객 접근 차단
 const EMPLOYEE_ONLY = ["/chat", "/loan-review"]
 
-export default auth(function middleware(req) {
+export default auth(function proxy(req) {
   const isLoggedIn = !!req.auth
   const isEmployee = req.auth?.user?.isEmployee === true
   // 직원이 고객 모드로 전환한 경우 — 고객처럼 취급 (역방향 전환 불가)

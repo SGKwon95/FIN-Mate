@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 import {
   Home, ArrowLeftRight, TrendingUp, Settings, Search,
-  CreditCard, History, Percent, Calculator, RefreshCw,
-  Landmark, PiggyBank, Banknote, X,
+  CreditCard, History, Percent, BarChart2, RefreshCw,
+  Landmark, PiggyBank, Banknote, X, Sparkles,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -30,15 +30,10 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { href: "/accounts",     icon: CreditCard, label: "내 계좌" },
       { href: "/transactions", icon: History,    label: "거래내역" },
+      { href: "/analysis",     icon: BarChart2,  label: "소비분석" },
     ],
   },
-  {
-    kind: "group", label: "금리", icon: Percent,
-    children: [
-      { href: "/rates",          icon: Percent,    label: "적용금리" },
-      { href: "/rates/estimate", icon: Calculator, label: "예상금리" },
-    ],
-  },
+  { kind: "leaf", href: "/rates", icon: Percent, label: "금리" },
   { kind: "leaf",  href: "/dashboard", icon: Home,           label: "홈" },
   {
     kind: "group", label: "이체", icon: ArrowLeftRight,
@@ -53,6 +48,7 @@ const NAV_ITEMS: NavItem[] = [
       { href: "/products/deposit", icon: Landmark,  label: "정기예금" },
       { href: "/products/savings", icon: PiggyBank, label: "적금" },
       { href: "/products/loan",    icon: Banknote,  label: "대출" },
+      { href: "/recommend",        icon: Sparkles,  label: "맞춤추천" },
     ],
   },
 ]
