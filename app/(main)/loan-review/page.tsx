@@ -11,7 +11,7 @@ export default async function LoanReviewPage() {
   if (!session?.user?.isEmployee) redirect('/dashboard')
 
   const applications = await prisma.loanApplication.findMany({
-    where: { applicationStatus: { in: ['SUBMITTED', 'APPROVED', 'REJECTED'] } },
+    where: { applicationStatus: { in: ['SUBMITTED', 'PENDING_REVIEW', 'APPROVED', 'REJECTED'] } },
     include: {
       party: { select: { partyName: true } },
       product: { select: { productName: true } },

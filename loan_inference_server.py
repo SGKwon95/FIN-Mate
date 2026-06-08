@@ -10,6 +10,7 @@ from phoenix.otel import register as _phoenix_register
 _phoenix_register(
     project_name="fin-mate-ml",
     endpoint=os.getenv("PHOENIX_ENDPOINT", "http://localhost:6006"),
+    batch=True,  # 비동기 배치 전송 — Phoenix 미가동 시 요청 블로킹 방지
 )
 from opentelemetry import trace as _otel_trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -23,14 +24,13 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+# pkl 역직렬화 시 TorchLoanWrapper / LoanMLP 클래스를 찾을 수 있도록 미리 import
+from loan_model_wrapper import LoanMLP, TorchLoanWrapper  # noqa: F401
+
 MODEL_PATH = os.getenv("LOAN_MODEL_PATH", "loan_model.pkl")
 
-app = FastAPI(title="FIN-Mate 대출심사 ML API")
-FastAPIInstrumentor.instrument_app(app)
+from contextlib import asynccontextmanager
 
-_tracer = _otel_trace.get_tracer(__name__)
-
-# 서버 시작 시 모델 로드
 _artifact: dict | None = None
 
 def get_artifact() -> dict:
@@ -42,7 +42,25 @@ def get_artifact() -> dict:
                 "먼저 'python loan_model.py'를 실행해 loan_model.pkl을 생성하세요."
             )
         _artifact = joblib.load(MODEL_PATH)
+        # 워밍업: 첫 요청 지연 제거
+        wrapper = _artifact.get("model")
+        if hasattr(wrapper, "predict_proba"):
+            dummy = pd.DataFrame(
+                np.zeros((1, len(_artifact["features"]))),
+                columns=_artifact["features"],
+            )
+            wrapper.predict_proba(dummy)
     return _artifact
+
+@asynccontextmanager
+async def lifespan(app):
+    get_artifact()  # 서버 시작 시 즉시 로드 + 워밍업
+    yield
+
+app = FastAPI(title="FIN-Mate 대출심사 ML API", lifespan=lifespan)
+FastAPIInstrumentor.instrument_app(app)
+
+_tracer = _otel_trace.get_tracer(__name__)
 
 
 class ApplicantInput(BaseModel):

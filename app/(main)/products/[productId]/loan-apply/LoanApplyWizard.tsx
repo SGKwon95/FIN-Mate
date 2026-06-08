@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronRight, ChevronLeft, Loader2, CheckCircle2, XCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { formatKRWShort } from "@/lib/formatters"
 import { submitLoanApplication } from "./actions"
 
 // ── 타입 ────────────────────────────────────────────────────────────────────────
@@ -21,6 +22,7 @@ type MlResult = {
   mlScore: number
   mlDefaultProb: string
   applicationId: string
+  applicationStatus: string
 }
 
 const PURPOSES = [
@@ -105,6 +107,7 @@ export default function LoanApplyWizard({ product }: { product: ProductInfo }) {
         mlScore: result.mlScore,
         mlDefaultProb: (Number(result.mlDefaultProb) * 100).toFixed(1),
         applicationId,
+        applicationStatus: result.applicationStatus,
       })
       setStep(3)
     } catch (e) {
@@ -157,7 +160,7 @@ export default function LoanApplyWizard({ product }: { product: ProductInfo }) {
             </div>
             {product.maxLoanAmount && (
               <p className="text-[11px] text-kb-gray mt-1">
-                최대 {(product.maxLoanAmount / 10_000).toLocaleString()}만원
+                최대 {formatKRWShort(product.maxLoanAmount)}
               </p>
             )}
           </Field>
@@ -320,36 +323,54 @@ export default function LoanApplyWizard({ product }: { product: ProductInfo }) {
           <h2 className="text-base font-bold text-kb-navy">심사 결과</h2>
 
           {/* 결과 카드 */}
-          <div className={cn(
-            "rounded-2xl p-6 text-center",
-            mlResult.mlDecision === "승인"
-              ? "bg-gradient-to-br from-green-500 to-emerald-600"
-              : "bg-gradient-to-br from-red-500 to-rose-600"
-          )}>
-            <div className="flex justify-center mb-3">
-              {mlResult.mlDecision === "승인"
-                ? <CheckCircle2 className="w-12 h-12 text-white" />
-                : <XCircle className="w-12 h-12 text-white" />}
+          {mlResult.applicationStatus === "PENDING_REVIEW" ? (
+            <div className="rounded-2xl p-6 text-center bg-gradient-to-br from-orange-400 to-amber-500">
+              <div className="flex justify-center mb-3">
+                <svg className="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <p className="text-2xl font-extrabold text-white mb-1">검토 중</p>
+              <p className="text-white/80 text-sm">담당자 확인 후 결과를 안내드립니다</p>
             </div>
-            <p className="text-3xl font-extrabold text-white mb-1">{mlResult.mlDecision}</p>
-            <p className="text-white/70 text-sm">
-              {product.productName}
-            </p>
-          </div>
+          ) : (
+            <div className={cn(
+              "rounded-2xl p-6 text-center",
+              mlResult.applicationStatus === "APPROVED"
+                ? "bg-gradient-to-br from-green-500 to-emerald-600"
+                : "bg-gradient-to-br from-red-500 to-rose-600"
+            )}>
+              <div className="flex justify-center mb-3">
+                {mlResult.applicationStatus === "APPROVED"
+                  ? <CheckCircle2 className="w-12 h-12 text-white" />
+                  : <XCircle className="w-12 h-12 text-white" />}
+              </div>
+              <p className="text-3xl font-extrabold text-white mb-1">
+                {mlResult.applicationStatus === "APPROVED" ? "승인" : "거절"}
+              </p>
+              <p className="text-white/70 text-sm">{product.productName}</p>
+            </div>
+          )}
 
           {/* 점수 상세 */}
           <div className="bg-white rounded-2xl shadow-card divide-y divide-kb-gray-border">
             <ScoreRow label="신용점수 (ML)" value={`${mlResult.mlScore}점`} />
             <ScoreRow label="부도 확률" value={`${mlResult.mlDefaultProb}%`} />
             <ScoreRow label="신청 상품" value={product.productName} />
-            <ScoreRow
-              label="신청 금액"
-              value={`${amountNum.toLocaleString()}원`}
-            />
+            <ScoreRow label="신청 금액" value={`${amountNum.toLocaleString()}원`} />
             <ScoreRow label="기간" value={`${periodNum}개월`} />
           </div>
 
-          {mlResult.mlDecision !== "승인" && (
+          {mlResult.applicationStatus === "PENDING_REVIEW" && (
+            <div className="bg-orange-50 rounded-2xl p-4">
+              <p className="text-xs text-orange-700 leading-relaxed">
+                ML 분석 점수({mlResult.mlScore}점)가 자동 처리 기준에 해당하지 않아 담당자가 추가 검토합니다.
+                영업일 기준 1~2일 내 결과를 안내드립니다.
+              </p>
+            </div>
+          )}
+
+          {mlResult.applicationStatus === "REJECTED" && (
             <div className="bg-amber-50 rounded-2xl p-4">
               <p className="text-xs text-amber-700 leading-relaxed">
                 현재 정보 기준으로 대출 심사 요건을 충족하지 못했습니다.

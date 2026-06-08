@@ -3,6 +3,16 @@ export function formatKRW(amount: number | string): string {
   return Number(amount).toLocaleString("ko-KR") + "원"
 }
 
+/** 금액을 "15억원", "3천만원", "500만원" 등 한국어 단위로 축약 */
+export function formatKRWShort(amount: number): string {
+  const eok = Math.floor(amount / 100_000_000)
+  const man = Math.floor((amount % 100_000_000) / 10_000)
+  if (eok > 0 && man > 0) return `${eok}억 ${man.toLocaleString("ko-KR")}만원`
+  if (eok > 0) return `${eok}억원`
+  if (man > 0) return `${man.toLocaleString("ko-KR")}만원`
+  return formatKRW(amount)
+}
+
 /** 계좌번호 마스킹: 00900-12-345678 → 009**-**-***678 */
 export function maskAccountNumber(num: string): string {
   const digits = num.replace(/\D/g, "")
