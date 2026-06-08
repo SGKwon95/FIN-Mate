@@ -10,10 +10,12 @@ export async function GET() {
     })
     if (!res.ok) return NextResponse.json([], { status: 200 })
     const data = await res.json()
-    const models = (data.data ?? []).map((m: { id: string }) => ({
-      id: m.id,
-      label: m.id,
-    }))
+    const EMBED_PATTERN = /embed|embedding/i
+    const models = (data.data ?? [])
+      .filter((m: { id: string; type?: string }) =>
+        m.type !== 'embedding' && !EMBED_PATTERN.test(m.id)
+      )
+      .map((m: { id: string }) => ({ id: m.id, label: m.id }))
     return NextResponse.json(models)
   } catch {
     return NextResponse.json([], { status: 200 })

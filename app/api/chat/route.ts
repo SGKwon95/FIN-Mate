@@ -31,17 +31,27 @@ export async function POST(req: Request) {
     useRag = true,                     // RAG 활성화 여부
   } = await req.json()
 
-  // docCategory가 있으면 해당 카테고리의 storedName 목록으로 docNames 결정
+  // docCategory가 있으면 해당 카테고리(또는 전체)의 업로드 문서 storedName으로 제한
+  // 직원 채팅은 'all'이어도 employee 업로드 문서에만 검색 — 상품 약관 청크가 높은 유사도로 올라와 관련 청크를 밀어내는 문제 방지
   let docNames: string[] | undefined = explicitDocNames
-  if (docCategory && docCategory !== 'all') {
+  if (isEmployee && docCategory && !explicitDocNames?.length) {
     const uploaded = await prisma.document.findMany({
-      where: { entityType: 'EMPLOYEE_UPLOAD', documentType: docCategory },
+      where: {
+        entityType: 'EMPLOYEE_UPLOAD',
+        ...(docCategory !== 'all' ? { documentType: docCategory } : {}),
+      },
       select: { storedName: true },
     })
-    docNames = uploaded.map(d => d.storedName).filter(Boolean) as string[]
+    const names = uploaded.map(d => d.storedName).filter(Boolean) as string[]
+    if (names.length) docNames = names
   }
 
-  const userQuestion = messages?.findLast(
+  // 빈 assistant 메시지 제거 — 이��� 응답 실패 시 모델이 빈 ���턴을 반복하는 문제 방지
+  const cleanedMessages = (messages ?? []).filter(
+    (m: { role: string; content: string }) => !(m.role === 'assistant' && !m.content?.trim())
+  )
+
+  const userQuestion = cleanedMessages.findLast(
     (m: { role: string }) => m.role === 'user',
   )?.content ?? ''
 
@@ -164,11 +174,28 @@ export async function POST(req: Request) {
           }
         }
 
-        ragChunks = await retrieveChunks(queryVec, {
-          topK: 5,
-          docNames: docNames?.length ? docNames : undefined,
-          minSimilarity: 0.3,
-        })
+        // 고객 쿼리에서 직원 업로드 문서(emp-*) 제외
+        // 비emp 문서가 없으면 RAG 건너뜀 — 무관한 직원 문서가 컨텍스트 오염 방지
+        let skipRag = false
+        let ragDocNames: string[] | undefined = docNames?.length ? docNames : undefined
+        if (!isEmployee && !ragDocNames) {
+          const customerDocs = await prisma.documentChunk
+            .findMany({ where: { docName: { not: { startsWith: 'emp-' } } }, select: { docName: true }, distinct: ['docName'] })
+            .then(rows => rows.map(r => r.docName))
+          if (customerDocs.length === 0) {
+            skipRag = true  // 고객용 문서 없음 → RAG 없이 일반 응답
+          } else {
+            ragDocNames = customerDocs
+          }
+        }
+
+        if (!skipRag) {
+          ragChunks = await retrieveChunks(queryVec, {
+            topK: 5,
+            docNames: ragDocNames,
+            minSimilarity: 0.3,
+          })
+        }
         finalContext = chunksToContext(ragChunks)
         ragChunkCount = ragChunks.length
       }
@@ -202,7 +229,7 @@ export async function POST(req: Request) {
   let systemPrompt: string
 
   // 모든 프롬프트에 공통 적용되는 언어 규칙
-  const LANGUAGE_RULE = `\n\n## 언어 규칙 (절대 준수)\n- 한국어로만 답변한다.\n- 한자(漢字)를 절대 사용하지 마라. 한자가 필요한 경우 반드시 한글로 대체한다.\n- 영어 고유명사 외 외래어도 한글로 표기한다.`
+  const LANGUAGE_RULE = `\n\n## 언어 규칙 (절대 준수)\n- 한국어로만 답변한다.\n- 한자(漢字)를 절대 사용하지 마라. 한자가 필요한 경우 반드시 한글로 대체한다.\n- 영어 고유명사 외 외래어도 한글로 표기한다.\n- 사용자가 단어나 짧은 문구만 입력한 경우(예: "보이스피싱", "금리"), 해당 주제에 대한 설명이나 안내를 요청한 것으로 간주하고 적극적으로 답변한다.`
 
   if (productListContext) {
     // 직원 전용: DB 상품 목록 직접 출력
@@ -222,13 +249,14 @@ ${productListContext}
   } else if (finalContext) {
     // RAG / 약관 문서 모드
     systemPrompt = `# 역할
-너는 KB국민은행 약관 전문 AI 상담원이다. 제공된 <Context> 문서에만 근거하여 답변한다.
+너는 KB국민은행 약관 전문 AI 상담원이다. 제공된 <Context> 문서를 우선 근거로 답변한다.
 
 # 필수 준수 규칙
 
-## 1. 문서 외 답변 절대 금지
-- <Context>에 없는 내용은 추측하거나 학습 지식으로 보완하지 마라.
-- 문서에서 찾을 수 없는 경우 다음 문장만 출력하라:
+## 1. 답변 원칙
+- <Context>에 있는 내용은 반드시 Context를 근거로 답변하라.
+- <Context>에 없는 내용이라도 **금융 소비자 보호·보이스피싱 예방·계좌 보안·금융 사기 대응** 등 일반 금융 상식에 해당하는 경우, 일반 지식으로 보완하되 답변 끝에 "(제공된 약관 외 일반 안내)" 를 추가하라.
+- 위 예외 외에 <Context>에 없는 금리·수치·기간 등은 추측하지 말고 다음 문장을 출력하라:
   "죄송합니다. 해당 내용은 제공된 약관에서 확인되지 않습니다."
 
 ## 2. 수치 정확성 (최우선)
@@ -261,10 +289,11 @@ ${finalContext}
   } else {
     // 컨텍스트 없음
     systemPrompt = `# 역할
-너는 KB국민은행 AI 금융 상담원이다.
+너는 KB국민은행 AI 금융 상담원이다. 고객의 금융 관련 질문에 성실히 답변한다.
 
 ## 규칙
 - 확실하지 않은 수치(금리, 한도 등)는 추측하여 답변하지 마라.
+- 보이스피싱 예방, 금융 사기 대응, 계좌 보안, 개인정보 보호 등 금융 소비자 보호 주제는 일반 금융 지식을 활용하여 적극적으로 안내한다.
 - 친절하고 전문적인 은행원 어조(~합니다)로 답변한다.
 ${uploadedDocsSection}
 ${LANGUAGE_RULE}`
@@ -288,9 +317,9 @@ ${LANGUAGE_RULE}`
   })
 
   const result = streamText({
-    model: lmstudio(modelId ?? 'local-model'),
+    model: lmstudio(modelId || 'local-model'),
     system: systemPrompt,
-    messages,
+    messages: cleanedMessages,
     temperature: 0.05,  // 금융 정보는 낮은 temperature로 할루시네이션 억제
     experimental_telemetry: { isEnabled: true, functionId: 'fin-mate-chat' },
   })
@@ -298,6 +327,7 @@ ${LANGUAGE_RULE}`
   // RAG 캐시 저장 (fire-and-forget, 스트리밍 완료 후)
   if (contextSource === 'rag' && queryVec && userQuestion) {
     result.text.then(async (answer) => {
+      if (!answer?.trim()) return  // 빈 응답은 캐시 저장 안 함
       await saveCache({
         cacheKey,
         question:       normalizedQ,

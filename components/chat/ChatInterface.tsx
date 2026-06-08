@@ -49,7 +49,7 @@ export default function ChatInterface({
     fetch('/api/chat/suggestions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ context: initialContext ?? '', modelId }),
+      body: JSON.stringify({ context: initialContext ?? '', modelId, docCategory }),
     })
       .then(r => r.json())
       .then(({ questions }) => { if (Array.isArray(questions)) setSuggestions(questions) })
@@ -110,7 +110,7 @@ export default function ChatInterface({
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (!isLoading && input.trim()) {
+      if (!isLoading && input.trim() && modelId) {
         handleSubmit(e as unknown as React.FormEvent)
       }
     }
@@ -133,7 +133,7 @@ export default function ChatInterface({
             onChange={(e) => setModelId(e.target.value)}
             className="text-sm border border-kb-gray-border rounded-lg px-2.5 py-1.5 bg-kb-gray-light text-kb-navy focus:outline-none focus:ring-2 focus:ring-kb-yellow cursor-pointer font-medium max-w-[140px]"
           >
-            {models.length === 0 && <option value="">모델 로딩 중…</option>}
+            {models.length === 0 && <option value="">LM Studio 미연결</option>}
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
@@ -180,7 +180,7 @@ export default function ChatInterface({
           </div>
         )}
 
-        {messages.map((m) => (
+        {messages.filter(m => m.role !== 'assistant' || !!m.content?.trim()).map((m) => (
           <div
             key={m.id}
             className={cn('flex gap-2.5', m.role === 'user' ? 'justify-end' : 'justify-start')}
@@ -207,6 +207,9 @@ export default function ChatInterface({
                     </svg>
                     캐시 응답
                   </span>
+                )}
+                {!m.content && !(isLoading && m.id === messages.at(-1)?.id) && (
+                  <p className="text-kb-gray text-xs italic">모델이 응답하지 않았습니다. LM Studio에서 채팅 모델이 로드되어 있는지 확인해주세요.</p>
                 )}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -357,7 +360,7 @@ export default function ChatInterface({
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || !input.trim() || !modelId}
             className="w-10 h-10 rounded-xl bg-kb-navy text-white flex items-center justify-center shrink-0 hover:bg-kb-navy-light disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             aria-label="전송"
           >

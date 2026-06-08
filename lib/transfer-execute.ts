@@ -93,13 +93,15 @@ export async function executeTransfer(input: {
   }
 
   const isExternal = bankCode !== OWN_BANK_CODE
+  const BOK_WIRE_THRESHOLD = 1_000_000_000  // 10억 초과 → 한은금융망
 
   const now = new Date()
   const txDate = toKSTDateCode(now)
   const txNo = `TX${Date.now()}`
 
-  // ── 타행 이체 (Kafka 공동망) ────────────────────────────────
+  // ── 타행 이체 ────────────────────────────────────────────────
   if (isExternal) {
+    const useBokWire = amount > BOK_WIRE_THRESHOLD
     const { findOtherBankAccount } = await import("@/lib/interbank-db")
     if (!findOtherBankAccount(toAccountNumber))
       return { ok: false, message: "수신 계좌가 존재하지 않습니다." }
@@ -122,7 +124,7 @@ export async function executeTransfer(input: {
         data: {
           instructionType:   "OUTWARD",
           transferScope:     "INTERBANK",
-          clearingNetwork:   "KFTC",
+          clearingNetwork:   useBokWire ? "BOK_WIRE" : "KFTC",
           networkSeqNo:      txNo,
           instructionStatus: "PENDING",
           totalCount:        1,
@@ -159,35 +161,33 @@ export async function executeTransfer(input: {
 
     if (!result) return { ok: false, message: "잔액이 부족합니다." }
 
-    // 공동망으로 이체 요청 발행
+    // Kafka 이체 요청 발행 — 금액에 따라 공동망(KFTC) 또는 한은금융망(BOK-Wire) 토픽 선택
     // 브로커 장애·리더 선출 중 producer.send()가 무한 행잉하는 것을 막기 위해 5s 타임아웃.
     // DB 트랜잭션은 이미 완료(PENDING)이므로 타임아웃 시에도 데이터 손실 없음.
     try {
       const producer = await getProducer()
+      const payload = {
+        transactionId:     result.transactionId,
+        instructionId:     result.instructionId,
+        transactionNo:     txNo,
+        fromBankCode:      OWN_BANK_CODE,
+        fromAccountNumber: fromAccount.accountNumber,
+        fromPartyName:     callerName,
+        toBankCode:        bankCode,
+        toAccountNumber:   toAccountNumber,
+        toAccountName:     toName,
+        amount,
+        memo:              memo ?? null,
+        requestedAt:       now.toISOString(),
+        clearingNetwork:   useBokWire ? "BOK_WIRE" : "KFTC",
+      }
       const sendTimeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Kafka send timeout (5s)")), 5000)
       )
       await Promise.race([
         producer.send({
-          topic: TOPICS.TRANSFER_REQUESTS,
-          messages: [{
-            key: result.transactionId,
-            value: JSON.stringify({
-              transactionId:    result.transactionId,
-              instructionId:    result.instructionId,
-              transactionNo:    txNo,
-              fromBankCode:     OWN_BANK_CODE,
-              fromAccountNumber: fromAccount.accountNumber,
-              fromPartyName:    callerName,
-              toBankCode:       bankCode,
-              toAccountNumber:  toAccountNumber,
-              toAccountName:    toName,
-              amount,
-              memo:             memo ?? null,
-              requestedAt:      now.toISOString(),
-            }),
-            headers: injectTraceContext(),
-          }],
+          topic: useBokWire ? TOPICS.BOK_WIRE_REQUESTS : TOPICS.TRANSFER_REQUESTS,
+          messages: [{ key: result.transactionId, value: JSON.stringify(payload), headers: injectTraceContext() }],
         }),
         sendTimeout,
       ])

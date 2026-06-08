@@ -21,6 +21,10 @@ export const TOPICS = {
   INBOUND_REQUESTS:     'interbank-inbound-requests',
   // Inbound | Producer: inbound-consumer → Consumer: Gateway (입금 처리 결과)
   INBOUND_RESULTS:      'interbank-inbound-results',
+  // BOK-Wire Step 1 | Producer: FIN-Mate 앱  → Consumer: bok-wire-gateway (10억 초과 타행이체)
+  BOK_WIRE_REQUESTS:    'bokwire-requests',
+  // BOK-Wire Step 2 | Producer: bok-wire-gateway → Consumer: settlement-consumer (즉시 정산 완료)
+  BOK_WIRE_RESULTS:     'bokwire-results',
 } as const
 
 const kafka = new Kafka({
