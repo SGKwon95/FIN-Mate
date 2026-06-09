@@ -12,6 +12,7 @@
  */
 import './otel-init'
 import { kafka, TOPICS } from '@/lib/kafka'
+import { prisma } from '@/lib/prisma'
 import { createWorkerLogger } from '@/lib/logger'
 import { runWithKafkaSpan, injectTraceContext } from '@/lib/kafka-otel'
 
@@ -85,30 +86,19 @@ async function main() {
             amount: req.amount,
           }, '이체 요청 수신')
 
-          // Step 2: A 에게 수신 확인 ACK
-          await producer.send({
-            topic:    TOPICS.GATEWAY_ACK,
-            messages: [{ key: req.transactionId, value: JSON.stringify({
-              transactionId: req.transactionId,
-              transactionNo: req.transactionNo,
-              status:        'RECEIVED',
-              receivedAt:    now,
-            }), headers: injectTraceContext() }],
-          })
-
           // Step 3: 수신 은행으로 라우팅 (FIN-Mate 자행 수신 vs 타행 시뮬레이터)
           if (req.toBankCode === '004') {
             await producer.send({
               topic:    TOPICS.INBOUND_REQUESTS,
               messages: [{ key: req.transactionId, value: message.value, headers: injectTraceContext() }],
             })
-            log.info({ event: 'inbound_routed', transactionNo: req.transactionNo }, 'A 수신 ACK 발신 + FIN-Mate 인바운드 라우팅 완료')
+            log.info({ event: 'inbound_routed', transactionNo: req.transactionNo }, 'FIN-Mate 인바운드 라우팅 완료')
           } else {
             await producer.send({
               topic:    TOPICS.ROUTED_REQUESTS,
               messages: [{ key: req.transactionId, value: message.value, headers: injectTraceContext() }],
             })
-            log.info({ event: 'interbank_routed', transactionNo: req.transactionNo }, 'A 수신 ACK 발신 + B 은행 라우팅 완료')
+            log.info({ event: 'interbank_routed', transactionNo: req.transactionNo }, 'B 은행 라우팅 완료')
           }
         }
 
@@ -140,13 +130,32 @@ async function main() {
             }), headers: injectTraceContext() }],
           })
 
-          // Step 8: A 에게 최종 정산 결과 전달
-          await producer.send({
-            topic:    TOPICS.TRANSFER_SETTLEMENTS,
-            messages: [{ key: res.transactionId, value: message.value, headers: injectTraceContext() }],
+          // Step 8: 배치 정산 대기 — DB에 SETTLEMENT_PENDING 기록 (하루 1회 배치 워커가 최종 확정)
+          const txn = await prisma.transaction.findUnique({
+            where:  { transactionId: res.transactionId },
+            select: { instructionId: true },
           })
 
-          log.info({ event: 'settlement_forwarded', transactionNo: res.transactionNo }, 'B ACK 발신 + A 정산 결과 전달 완료')
+          await prisma.$transaction([
+            prisma.transaction.update({
+              where: { transactionId: res.transactionId },
+              data:  { transactionStatus: 'SETTLEMENT_PENDING' },
+            }),
+            ...(txn?.instructionId ? [prisma.kftcReceipt.create({
+              data: {
+                direction:     'OUTBOUND',
+                transactionId: res.transactionId,
+                instructionId: txn.instructionId,
+                rspCode:       res.status === 'COMPLETED' ? '000' : (res.failureCode ?? 'ERR'),
+                rspMessage:    res.status === 'COMPLETED' ? '정상' : '실패',
+                bankRspCode:   res.failureCode ?? null,
+                bankTranId:    res.transactionNo,
+                receivedAt:    new Date(res.settledAt),
+              },
+            })] : []),
+          ])
+
+          log.info({ event: 'settlement_pending_recorded', transactionNo: res.transactionNo, status: res.status }, 'B ACK 발신 + 배치 정산 대기 기록')
         }
       })
     },

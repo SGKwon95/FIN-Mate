@@ -93,16 +93,22 @@ Kafka 타행이체, ML 대출심사, RAG 채팅, LGTM 관측성 스택까지 포
 ### Kafka 타행이체 흐름
 
 ```
-FIN-Mate(A)
-  → [TRANSFER_REQUESTS] → interbank-gateway
-    → [ROUTED_REQUESTS] → B은행 시뮬레이터
-    ← [B_RESULTS]       ← B은행 시뮬레이터
-  → [TRANSFER_SETTLEMENTS] → settlement-consumer(A)
-  ← [INBOUND_REQUESTS]     ← interbank-gateway (B측 입금)
-  → [INBOUND_RESULTS]      → interbank-gateway (완료)
+FIN-Mate(A) [10억 이하]
+  → [TRANSFER_REQUESTS]  → 공동망 Gateway
+    → [ROUTED_REQUESTS]  → B은행 시뮬레이터
+    ← [B_RESULTS]        ← B은행 시뮬레이터
+    Gateway가 DB에 SETTLEMENT_PENDING 직접 기록
+  (1일 1회) settlement-batch 워커 → DB 최종 확정
+
+FIN-Mate(A) [toBankCode=004 자행 수신]
+  → [TRANSFER_REQUESTS]  → 공동망 Gateway
+    → [INBOUND_REQUESTS] → inbound-consumer → DB 즉시 입금
+
+FIN-Mate(A) [10억 초과 — 한은금융망]
+  → [BOK_WIRE_REQUESTS]  → BOK-Wire 게이트웨이 → DB 즉시 정산 (RTGS)
 ```
 
-W3C `traceparent` 헤더로 Kafka 메시지 전파 → Tempo에서 전체 10-step을 단일 traceId로 확인 가능.
+W3C `traceparent` 헤더로 Kafka 메시지 전파 → Tempo에서 전체 흐름을 단일 traceId로 확인 가능.
 
 ### Kafka 역할 구분
 
@@ -110,20 +116,20 @@ W3C `traceparent` 헤더로 Kafka 메시지 전파 → Tempo에서 전체 10-ste
 
 | 토픽 상수 | 토픽명 | Producer | Consumer |
 |-----------|--------|----------|----------|
-| `TRANSFER_REQUESTS` | `interbank-transfer-requests` | FIN-Mate 앱 | Gateway |
-| `GATEWAY_ACK` | `interbank-gateway-ack` | Gateway | FIN-Mate 앱 |
-| `ROUTED_REQUESTS` | `interbank-routed-requests` | Gateway | B은행 시뮬레이터 |
-| `B_RECEIVED_ACK` | `interbank-b-received-ack` | B은행 | Gateway |
-| `B_RESULTS` | `interbank-b-results` | B은행 | Gateway |
-| `GATEWAY_B_ACK` | `interbank-gateway-b-ack` | Gateway | B은행 |
-| `TRANSFER_SETTLEMENTS` | `interbank-transfer-settlements` | Gateway | settlement-consumer |
-| `A_SETTLED_ACK` | `interbank-a-settled-ack` | FIN-Mate 앱 | Gateway |
-| `INBOUND_REQUESTS` | `interbank-inbound-requests` | Gateway | inbound-consumer |
-| `INBOUND_RESULTS` | `interbank-inbound-results` | inbound-consumer | Gateway |
+| `TRANSFER_REQUESTS` | `interbank-transfer-requests` | FIN-Mate 앱 | 공동망 Gateway |
+| `ROUTED_REQUESTS` | `interbank-routed-requests` | 공동망 Gateway | B은행 시뮬레이터 |
+| `B_RECEIVED_ACK` | `interbank-b-received-ack` | B은행 | 공동망 Gateway |
+| `B_RESULTS` | `interbank-b-results` | B은행 | 공동망 Gateway |
+| `GATEWAY_B_ACK` | `interbank-gateway-b-ack` | 공동망 Gateway | B은행 |
+| `INBOUND_REQUESTS` | `interbank-inbound-requests` | 공동망 Gateway | inbound-consumer |
+| `INBOUND_RESULTS` | `interbank-inbound-results` | inbound-consumer | 공동망 Gateway |
+| `BOK_WIRE_REQUESTS` | `bokwire-requests` | FIN-Mate 앱 | BOK-Wire 게이트웨이 |
+| `BOK_WIRE_RESULTS` | `bokwire-results` | BOK-Wire 게이트웨이 | (감사 추적용) |
 
-컨슈머 그룹: `fin-mate-settlement-group` (TRANSFER_SETTLEMENTS), `fin-mate-inbound-group` (INBOUND_REQUESTS)
+컨슈머 그룹: `interbank-gateway-group` · `interbank-simulator-group` · `fin-mate-inbound-group` · `fin-mate-bokwire-group`
 
-> 상세 시퀀스 다이어그램 및 RAG 흐름도: [docs/architecture-flows.md](docs/architecture-flows.md)
+> 브로커·프로듀서·컨슈머 역할, 메시지 형식, 중복·누락 방지 상세: [docs/kafka-interbank-transfer.md](docs/kafka-interbank-transfer.md)
+> 시퀀스 다이어그램 및 RAG 흐름도: [docs/architecture-flows.md](docs/architecture-flows.md)
 
 ---
 
@@ -152,9 +158,10 @@ app/
     └── metrics/              # Prometheus 메트릭 엔드포인트
 
 workers/
-├── interbank-gateway.ts
-├── settlement-consumer.ts
-├── inbound-consumer.ts
+├── interbank-gateway.ts      # 공동망 라우터 + SETTLEMENT_PENDING 기록
+├── inbound-consumer.ts       # 타행→FIN-Mate 입금
+├── bok-wire-gateway.ts       # 한은금융망 즉시 정산 (RTGS)
+├── settlement-batch.ts       # KFTC 배치 정산 (1일 1회)
 ├── scheduled-transfer-worker.ts
 └── otel-init.ts              # 워커용 OpenTelemetry 초기화
 
@@ -242,13 +249,14 @@ npm run dev
 ### Kafka 워커 실행
 
 ```bash
-npm run kafka:all          # 4개 워커 동시 실행
+npm run kafka:all               # 4개 워커 동시 실행 (gateway + simulator + inbound + bokwire)
 # 또는 개별 실행:
 npm run kafka:gateway
 npm run kafka:simulator
-npm run kafka:settlement
 npm run kafka:inbound
-npm run worker:scheduled   # 자동이체 워커 (단발)
+npm run kafka:bokwire
+npm run worker:settlement-batch # 배치 정산 워커 (단발, 1일 1회)
+npm run worker:scheduled        # 자동이체 워커 (단발)
 ```
 
 ### ML 서버 실행
