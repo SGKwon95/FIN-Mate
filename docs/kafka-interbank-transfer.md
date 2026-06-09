@@ -45,7 +45,7 @@ Kafka 서버. 토픽을 관리하고 메시지를 파티션에 저장한다.
 | `B_RECEIVED_ACK` | `interbank-b-received-ack` | B은행 → 공동망 Gateway |
 | `B_RESULTS` | `interbank-b-results` | B은행 → 공동망 Gateway |
 | `GATEWAY_B_ACK` | `interbank-gateway-b-ack` | 공동망 Gateway → B은행 |
-| `INBOUND_REQUESTS` | `interbank-inbound-requests` | 공동망 Gateway → 인바운드 컨슈머 |
+| `INBOUND_REQUESTS` | `interbank-inbound-requests` | 공동망 Gateway 또는 `/api/transfers/inbound` → 인바운드 컨슈머 |
 | `INBOUND_RESULTS` | `interbank-inbound-results` | 인바운드 컨슈머 → 공동망 Gateway |
 | `BOK_WIRE_REQUESTS` | `bokwire-requests` | 앱 → BOK-Wire 게이트웨이 |
 | `BOK_WIRE_RESULTS` | `bokwire-results` | BOK-Wire 게이트웨이 → (감사 추적용, 현재 소비자 없음) |
@@ -110,6 +110,59 @@ Kafka 서버. 토픽을 관리하고 메시지를 파티션에 저장한다.
   ▼
 [INBOUND_RESULTS] ──▶ 공동망 Gateway (완료 로그만)
 ```
+
+### Flow 4 — 외부 타행 → FIN-Mate 수신 (`POST /api/transfers/inbound`)
+
+타행(B은행 등) 시스템이 공동망을 통해 FIN-Mate 계좌로 직접 입금하는 경우.
+
+```
+[타행 시스템 / 공동망 게이트웨이]
+  │ POST /api/transfers/inbound
+  │ Header: X-Gateway-Token (GATEWAY_SECRET 환경변수와 대조)
+  │ Body: { transactionNo, fromBankCode, fromAccountNumber, fromPartyName,
+  │         toBankCode, toAccountNumber, toAccountName, amount, memo }
+  ▼
+[app/api/transfers/inbound/route.ts]
+  │ 인증 검증 (GATEWAY_SECRET 미설정 시 통과)
+  │ transactionId 생성 (crypto.randomUUID)
+  ▼
+[INBOUND_REQUESTS 토픽 발행]
+  │ → 202 { transactionId, status: "QUEUED" } 즉시 응답
+  ▼
+[인바운드 컨슈머 — fin-mate-inbound-group]
+  │ 수신 계좌 조회 (ACTIVE & 미잠금 확인)
+  │ DB: account.balance += amount
+  │ DB: transaction 생성 (TRANSFER_IN, transactionStatus=COMPLETED)
+  │ DB: kftcReceipt 생성 (direction='INBOUND', rspCode='000', transactionId @unique)
+  │ DB: notification 생성 (TRANSFER_IN)
+  ▼
+[INBOUND_RESULTS 토픽 발행] ──▶ 공동망 Gateway (완료 로그만)
+```
+
+**kftc_receipt 기록 시점**: 인바운드 컨슈머의 `prisma.$transaction` 내부에서 입금 처리와 원자적으로 생성됨. `transactionId @unique` 제약으로 재처리 시 중복 삽입 차단.
+
+**실패 케이스** (계좌 없음 / 비활성 / 잠금): kftcReceipt 미생성, INBOUND_RESULTS에 `status: "FAILED"` 발행.
+
+**호출 예시:**
+```bash
+curl -X POST http://localhost:3000/api/transfers/inbound \
+  -H "Content-Type: application/json" \
+  -H "X-Gateway-Token: $GATEWAY_SECRET" \
+  -d '{
+    "transactionNo":     "TX1748001234567",
+    "fromBankCode":      "302",
+    "fromAccountNumber": "3020000000001",
+    "fromPartyName":     "김신한",
+    "toBankCode":        "004",
+    "toAccountNumber":   "004-123456-78901",
+    "toAccountName":     "홍길동",
+    "amount":            100000,
+    "memo":              "용돈"
+  }'
+# → 202 { "transactionId": "uuid", "status": "QUEUED" }
+```
+
+---
 
 ### Flow 3 — 한은금융망 BOK-Wire (10억 초과)
 
