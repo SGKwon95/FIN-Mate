@@ -14,7 +14,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score, roc_curve, classification_report, confusion_matrix
+from sklearn.metrics import roc_auc_score, roc_curve, classification_report, confusion_matrix, log_loss
 import lightgbm as lgb
 import xgboost as xgb
 import torch
@@ -77,6 +77,7 @@ print(f"Train: {len(X_train):,}  Test: {len(X_test):,}\n")
 # ── 4. 공통 평가 함수 ─────────────────────────────────────────────────────────
 def evaluate(name: str, y_true, y_prob, elapsed: float) -> dict:
     auc = roc_auc_score(y_true, y_prob)
+    logloss = log_loss(y_true, y_prob)
     fpr, tpr, thresholds = roc_curve(y_true, y_prob)
     ks_idx = np.argmax(tpr - fpr)
     ks_stat = float(tpr[ks_idx] - fpr[ks_idx])
@@ -95,6 +96,7 @@ def evaluate(name: str, y_true, y_prob, elapsed: float) -> dict:
     print(f"  {name}")
     print(f"{'='*55}")
     print(f"  AUC-ROC    : {auc:.4f}")
+    print(f"  Log Loss   : {logloss:.4f}")
     print(f"  KS 통계량   : {ks_stat:.4f}  (임계값={ks_thresh:.4f})")
     print(f"  학습 시간   : {elapsed:.1f}s")
     print(f"  정확도      : {accuracy:.4f}")
@@ -108,6 +110,7 @@ def evaluate(name: str, y_true, y_prob, elapsed: float) -> dict:
     return {
         "model": name,
         "auc": round(auc, 4),
+        "log_loss": round(logloss, 4),
         "ks": round(ks_stat, 4),
         "ks_threshold": round(ks_thresh, 4),
         "accuracy": round(accuracy, 4),
@@ -263,11 +266,11 @@ results.append(evaluate("PyTorch MLP", y_test, y_prob_mlp, elapsed))
 print("\n\n" + "="*65)
 print("  최종 모델 성능 비교")
 print("="*65)
-print(f"{'모델':<22} {'AUC':>6} {'KS':>6} {'임계값':>7} {'F1(부도)':>9} {'시간(s)':>8}")
-print("-"*65)
+print(f"{'모델':<22} {'AUC':>6} {'LogLoss':>8} {'KS':>6} {'임계값':>7} {'F1(부도)':>9} {'시간(s)':>8}")
+print("-"*75)
 for r in results:
-    print(f"{r['model']:<22} {r['auc']:>6.4f} {r['ks']:>6.4f} {r['ks_threshold']:>7.4f} {r['f1_default']:>9.4f} {r['train_sec']:>8.1f}")
-print("="*65)
+    print(f"{r['model']:<22} {r['auc']:>6.4f} {r['log_loss']:>8.4f} {r['ks']:>6.4f} {r['ks_threshold']:>7.4f} {r['f1_default']:>9.4f} {r['train_sec']:>8.1f}")
+print("="*75)
 
 # ── 10. LightGBM 피처 중요도 Top 10 ────────────────────────────────────────────
 print("\n[ LightGBM 피처 중요도 Top 10 ]")
