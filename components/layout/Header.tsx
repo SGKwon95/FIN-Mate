@@ -35,15 +35,6 @@ export default async function Header() {
 
           {process.env.NODE_ENV !== 'development' && <IdleTimeout />}
 
-          {/* 설정 — 모바일에서 BottomNav 대체 */}
-          <Link
-            href="/settings"
-            className="p-2 rounded-lg hover:bg-kb-navy/10 transition-colors lg:hidden"
-            title="설정"
-          >
-            <Settings className="w-5 h-5 text-kb-navy" />
-          </Link>
-
           {/* 알림 */}
           <NotificationBell initialUnreadCount={unreadCount} />
 

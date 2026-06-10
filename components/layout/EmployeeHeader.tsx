@@ -5,13 +5,14 @@ import { useSession } from "next-auth/react"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import Link from "next/link"
-import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X } from "lucide-react"
+import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { switchToCustomer } from "@/app/(main)/switch-role-action"
 
 const NAV_ITEMS = [
-  { href: "/chat",        label: "AI 상담",   icon: MessageSquare },
-  { href: "/loan-review", label: "대출 심사", icon: ClipboardList },
+  { href: "/chat",           label: "AI 상담",     icon: MessageSquare },
+  { href: "/loan-review",    label: "대출 심사",   icon: ClipboardList },
+  { href: "/account-limits", label: "고객계좌관리", icon: ShieldCheck },
 ]
 
 export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCustomer?: boolean }) {
@@ -78,7 +79,7 @@ export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCusto
             </button>
             <span className="text-white/80 text-sm hidden sm:inline">{userName} 님</span>
             <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => signOut({ callbackUrl: `${window.location.origin}/login` })}
               className="flex items-center gap-1.5 text-white/70 hover:text-white text-xs transition-colors"
               aria-label="로그아웃"
             >

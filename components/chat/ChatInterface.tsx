@@ -42,19 +42,23 @@ export default function ChatInterface({
     if (initialContext) setRetrievedContext(initialContext)
   }, [initialContext])
 
-  // modelId와 context가 준비되면 추천 질문 생성
-  useEffect(() => {
+  function fetchSuggestions(conversationMessages?: { role: string; content: string }[]) {
     if (!modelId) return
     setSuggestions([])
     fetch('/api/chat/suggestions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ context: initialContext ?? '', modelId, docCategory }),
+      body: JSON.stringify({
+        context: initialContext ?? '',
+        modelId,
+        docCategory,
+        messages: conversationMessages ?? [],
+      }),
     })
       .then(r => r.json())
       .then(({ questions }) => { if (Array.isArray(questions)) setSuggestions(questions) })
       .catch(() => {})
-  }, [modelId, initialContext])
+  }
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -68,7 +72,7 @@ export default function ChatInterface({
       if (fid) pendingFeedbackIdRef.current = fid
       pendingCacheHitRef.current = response.headers.get('X-Cache') === 'HIT'
     },
-    onFinish: (message) => {
+    onFinish: (message, { finishReason }) => {
       const fid = pendingFeedbackIdRef.current
       if (fid && message.id) {
         setFeedbackMap(prev => ({ ...prev, [message.id]: fid }))
@@ -77,6 +81,10 @@ export default function ChatInterface({
       if (pendingCacheHitRef.current && message.id) {
         setCacheHitMap(prev => ({ ...prev, [message.id]: true }))
         pendingCacheHitRef.current = false
+      }
+      if (finishReason === 'stop' || finishReason === 'length') {
+        // messages 상태는 onFinish 시점에 아직 갱신 전이므로 직전 대화 + 현재 응답으로 구성
+        fetchSuggestions([...messages, { role: 'assistant' as const, content: message.content }])
       }
     },
   })
@@ -164,19 +172,6 @@ export default function ChatInterface({
                 {onClose ? '상품에 관해 질문해보세요.' : '궁금한 금융 상품에 대해 질문해보세요.'}
               </p>
             </div>
-            {suggestions.length > 0 && (
-              <div className="w-full max-w-xs flex flex-col gap-2">
-                {suggestions.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => !isLoading && append({ role: 'user', content: q })}
-                    className="text-left text-xs px-3.5 py-2.5 rounded-xl border border-kb-gray-border bg-white text-kb-navy hover:bg-kb-gray-light active:scale-[0.98] transition-all leading-snug"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -348,6 +343,20 @@ export default function ChatInterface({
 
       {/* ── 하단 입력바 ───────────────────────────────── */}
       <div className="bg-white border-t border-kb-gray-border px-4 py-3 shrink-0">
+        {messages.length > 0 && !isLoading && suggestions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2.5">
+            {suggestions.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => append({ role: 'user', content: q })}
+                className="text-left text-xs px-3 py-1.5 rounded-lg border border-kb-gray-border bg-kb-gray-light text-kb-navy hover:bg-kb-yellow/10 hover:border-kb-yellow active:scale-[0.98] transition-all leading-snug"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}

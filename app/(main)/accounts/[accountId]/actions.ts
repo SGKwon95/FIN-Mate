@@ -17,6 +17,7 @@ export async function cancelSavings(input: {
 }): Promise<CancelSavingsResult> {
   const session = await auth()
   if (!session?.user?.partyId) redirect("/login")
+  if (!session.user.isEmployee) return { ok: false, message: "적금 해지는 직원만 처리할 수 있습니다." }
 
   const { accountId, toAccountId, idempotencyKey } = input
 

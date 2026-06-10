@@ -1,0 +1,116 @@
+{
+  "results": [
+    {
+      "model": "Logistic Regression",
+      "auc": 0.7053,
+      "log_loss": 0.4578,
+      "ks": 0.2984,
+      "ks_threshold": 0.193,
+      "accuracy": 0.6417,
+      "precision_default": 0.3126,
+      "recall_default": 0.6618,
+      "f1_default": 0.4246,
+      "train_sec": 3.4,
+      "cm": [
+        [
+          137360,
+          78388
+        ],
+        [
+          18221,
+          35651
+        ]
+      ]
+    },
+    {
+      "model": "LightGBM",
+      "auc": 0.7012,
+      "log_loss": 0.4902,
+      "ks": 0.2903,
+      "ks_threshold": 0.2426,
+      "accuracy": 0.6282,
+      "precision_default": 0.305,
+      "recall_default": 0.6734,
+      "f1_default": 0.4198,
+      "train_sec": 3.2,
+      "cm": [
+        [
+          133095,
+          82653
+        ],
+        [
+          17597,
+          36275
+        ]
+      ]
+    },
+    {
+      "model": "XGBoost",
+      "auc": 0.7184,
+      "log_loss": 0.6122,
+      "ks": 0.3177,
+      "ks_threshold": 0.5094,
+      "accuracy": 0.6612,
+      "precision_default": 0.3266,
+      "recall_default": 0.6549,
+      "f1_default": 0.4358,
+      "train_sec": 32.4,
+      "cm": [
+        [
+          143003,
+          72745
+        ],
+        [
+          18591,
+          35281
+        ]
+      ]
+    },
+    {
+      "model": "PyTorch MLP",
+      "auc": 0.7143,
+      "log_loss": 0.6169,
+      "ks": 0.3091,
+      "ks_threshold": 0.5034,
+      "accuracy": 0.644,
+      "precision_default": 0.3161,
+      "recall_default": 0.6721,
+      "f1_default": 0.43,
+      "train_sec": 274.1,
+      "cm": [
+        [
+          137425,
+          78323
+        ],
+        [
+          17665,
+          36207
+        ]
+      ]
+    }
+  ],
+  "lgb_feature_importance": {
+    "int_rate": 49,
+    "home_ownership": 32,
+    "annual_inc": 28,
+    "loan_amnt": 18,
+    "term": 18,
+    "dti": 16,
+    "fico_avg": 13,
+    "open_acc": 8,
+    "pub_rec": 4,
+    "emp_length": 0
+  },
+  "xgb_feature_importance": {
+    "term": 0.29578638076782227,
+    "int_rate": 0.2805367112159729,
+    "home_ownership": 0.10479668527841568,
+    "fico_avg": 0.043560050427913666,
+    "dti": 0.03374269977211952,
+    "inq_last_6mths": 0.03211488947272301,
+    "loan_amnt": 0.03040064498782158,
+    "annual_inc": 0.028398415073752403,
+    "emp_length": 0.026017984375357628,
+    "purpose": 0.02469419687986374
+  }
+}

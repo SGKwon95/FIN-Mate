@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react'
 import { CheckCircle2, XCircle, Clock, AlertCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatKRW } from '@/lib/formatters'
+import { formatKRW, formatDateTime } from '@/lib/formatters'
+import AlertDialog from '@/components/ui/AlertDialog'
 
 type Application = {
   applicationId: string
@@ -120,16 +121,18 @@ export default function LoanReviewClient({ applications }: { applications: Appli
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
       <h1 className="text-xl font-bold text-kb-navy">대출 심사</h1>
 
-      {error && (
-        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-          {error}
-        </div>
-      )}
+      <AlertDialog
+        open={!!error}
+        title="오류"
+        message={error ?? ''}
+        variant="error"
+        onConfirm={() => setError(null)}
+      />
 
-      {/* ML 심사 대기 */}
+      {/* 심사 대기 */}
       <section>
         <h2 className="text-sm font-semibold text-kb-gray uppercase tracking-wide mb-3">
-          ML 심사 대기 ({pending.length}건)
+          심사 대기 ({pending.length}건)
         </h2>
         {pending.length === 0 ? (
           <div className="text-center py-8 text-kb-gray text-sm bg-white rounded-2xl border border-kb-gray-border">
@@ -220,7 +223,7 @@ function AppCard({
   isDeciding: boolean
 }) {
   const submittedDate = app.submittedAt
-    ? new Date(app.submittedAt).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    ? formatDateTime(app.submittedAt)
     : '-'
 
   const scoreColor =
@@ -259,9 +262,9 @@ function AppCard({
         <div className="px-4 pb-4 border-t border-kb-gray-border">
           <div className="grid grid-cols-2 gap-3 mt-3 text-sm">
             <Detail label="신청 목적" value={app.loanPurpose ?? '-'} />
-            <Detail label="ML 판정" value={app.mlDecision ?? '미실행'} />
+            <Detail label="판정" value={app.mlDecision ?? '미실행'} />
             {app.mlScore !== null && (
-              <Detail label="ML 점수" value={`${app.mlScore}점`} valueClass={scoreColor} />
+              <Detail label="점수" value={`${app.mlScore}점`} valueClass={scoreColor} />
             )}
             {app.mlDefaultProb !== null && (
               <Detail label="부도 확률" value={`${(Number(app.mlDefaultProb) * 100).toFixed(2)}%`} />
@@ -269,12 +272,12 @@ function AppCard({
             {app.decidedAt && (
               <Detail
                 label="결정일시"
-                value={new Date(app.decidedAt).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                value={formatDateTime(app.decidedAt)}
               />
             )}
           </div>
 
-          {/* ML 심사 실행 버튼 (SUBMITTED 상태) */}
+          {/* 심사 실행 버튼 (SUBMITTED 상태) */}
           {app.applicationStatus === 'SUBMITTED' && (
             <button
               onClick={onScreen}
@@ -288,10 +291,10 @@ function AppCard({
             >
               {isScreening ? (
                 <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> ML 심사 실행 중...
+                  <Loader2 className="w-4 h-4 animate-spin" /> 심사 실행 중...
                 </span>
               ) : (
-                'ML 심사 실행'
+                '심사 실행'
               )}
             </button>
           )}
@@ -300,7 +303,7 @@ function AppCard({
           {app.applicationStatus === 'PENDING_REVIEW' && (
             <div className="mt-4 space-y-2">
               <p className="text-xs text-orange-600 font-medium">
-                ML 점수 {app.mlScore}점 — 직원 검토 후 최종 결정이 필요합니다.
+                점수 {app.mlScore}점 — 직원 검토 후 최종 결정이 필요합니다.
               </p>
               <div className="flex gap-2">
                 <button

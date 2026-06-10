@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ['127.0.0.1', '125.191.115.238', 'localhost'],
   serverExternalPackages: [
     "better-sqlite3",
     "kafkajs",

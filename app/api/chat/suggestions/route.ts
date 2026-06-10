@@ -19,40 +19,46 @@ async function fetchDocSample(docCategory: string): Promise<string> {
   return chunks.map((c) => c.content).join('\n\n')
 }
 
+type ChatMessage = { role: 'user' | 'assistant'; content: string }
+
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
 
-  const { context, modelId, docCategory } = await req.json()
+  const { context, modelId, docCategory, messages } = await req.json()
   if (!modelId) return Response.json({ questions: [] })
 
   const lm = createOpenAI({ baseURL: `${OLLAMA_BASE_URL}/v1`, apiKey: 'lm-studio' })
 
-  let resolvedContext: string = context?.trim() ?? ''
+  // 대화 기록이 있으면 파생 질문, 없으면 문서/일반 기반 초기 질문
+  const recentMessages: ChatMessage[] = Array.isArray(messages) ? messages.slice(-4) : []
+  const hasConversation = recentMessages.length >= 2
 
-  // 상품 컨텍스트 없고 docCategory 있으면 → 업로드된 문서에서 샘플 추출
-  if (!resolvedContext && docCategory) {
-    try {
-      resolvedContext = await fetchDocSample(docCategory)
-    } catch {
-      // DB 조회 실패 시 일반 질문으로 폴백
+  let systemPrompt: string
+  let userPrompt: string
+
+  if (hasConversation) {
+    const lastQ = recentMessages.filter(m => m.role === 'user').at(-1)?.content ?? ''
+    const lastA = recentMessages.filter(m => m.role === 'assistant').at(-1)?.content ?? ''
+    systemPrompt = `당신은 금융 상담 AI입니다. 아래 대화를 바탕으로 사용자가 자연스럽게 이어서 물어볼 수 있는 파생 질문 3개를 한국어로 생성하세요. 대화 주제에서 벗어나지 마세요. JSON 배열 형식으로만 응답하세요.\n예시 형식: ["질문1", "질문2", "질문3"]`
+    userPrompt = `사용자 질문: ${lastQ.slice(0, 300)}\nAI 답변: ${lastA.slice(0, 500)}`
+  } else {
+    let resolvedContext: string = context?.trim() ?? ''
+    if (!resolvedContext && docCategory) {
+      try { resolvedContext = await fetchDocSample(docCategory) } catch { /* fallback */ }
     }
+    systemPrompt = resolvedContext
+      ? `당신은 친절한 금융 상담 AI입니다. 아래 문서 내용을 바탕으로 실제로 확인할 수 있는 짧은 질문 3개를 한국어로 생성하세요. 문서에 없는 내용은 절대 만들지 마세요. JSON 배열 형식으로만 응답하세요.\n예시 형식: ["질문1", "질문2", "질문3"]`
+      : `당신은 친절한 금융 상담 AI입니다. 은행 업무 관련 일반적인 질문 3개를 한국어로 생성하세요. JSON 배열 형식으로만 응답하세요.\n예시 형식: ["질문1", "질문2", "질문3"]`
+    userPrompt = resolvedContext ? `문서 내용:\n${resolvedContext.slice(0, 1500)}` : '일반 금융 업무 질문을 생성해주세요.'
   }
-
-  const systemPrompt = resolvedContext
-    ? `당신은 친절한 금융 상담 AI입니다. 아래 문서 내용을 바탕으로 직원이 이 문서에서 실제로 확인할 수 있는 짧은 질문 4개를 한국어로 생성하세요. 문서에 없는 내용은 절대 만들지 마세요. JSON 배열 형식으로만 응답하세요. 다른 설명 없이 배열만 출력하세요.\n예시 형식: ["질문1", "질문2", "질문3", "질문4"]`
-    : `당신은 친절한 금융 상담 AI입니다. 은행 직원이 자주 묻는 일반적인 금융 업무 질문 4개를 한국어로 생성하세요. JSON 배열 형식으로만 응답하세요. 다른 설명 없이 배열만 출력하세요.\n예시 형식: ["질문1", "질문2", "질문3", "질문4"]`
-
-  const userPrompt = resolvedContext
-    ? `문서 내용:\n${resolvedContext.slice(0, 1500)}`
-    : '일반 금융 업무 질문을 생성해주세요.'
 
   try {
     const { text } = await generateText({
       model: lm(modelId),
       system: systemPrompt,
       prompt: userPrompt,
-      maxTokens: 300,
+      maxTokens: 200,
       temperature: 0.7,
     })
 
@@ -64,7 +70,7 @@ export async function POST(req: Request) {
 
     const valid = questions
       .filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
-      .slice(0, 4)
+      .slice(0, 3)
 
     return Response.json({ questions: valid })
   } catch {

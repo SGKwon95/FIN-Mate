@@ -1,4 +1,5 @@
 import { formatKRW, TX_TYPE_LABEL } from "@/lib/formatters"
+import { formatDateTime } from "@/lib/formatters"
 import { ArrowDownLeft, ArrowUpRight, RotateCcw, Minus } from "lucide-react"
 
 const CREDIT_TYPES = new Set(["DEPOSIT", "TRANSFER_IN", "INTEREST"])
@@ -39,9 +40,7 @@ export default function TransactionItem({
   const isCredit = CREDIT_TYPES.has(transactionType)
   const label = counterpartName || remark || memo || TX_TYPE_LABEL[transactionType] || transactionType
 
-  const date = new Date(transactedAt)
-  const dateStr = date.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })
-  const timeStr = date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })
+  const dateTimeStr = formatDateTime(transactedAt)
 
   return (
     <li className="flex items-center gap-3 px-5 py-4">
@@ -54,7 +53,7 @@ export default function TransactionItem({
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-kb-navy truncate">{label}</p>
         <p className="text-[11px] text-kb-gray mt-0.5">
-          {TX_TYPE_LABEL[transactionType] ?? transactionType} · {dateStr} {timeStr}
+          {TX_TYPE_LABEL[transactionType] ?? transactionType} · {dateTimeStr}
         </p>
       </div>
 
