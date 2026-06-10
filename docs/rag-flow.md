@@ -251,6 +251,105 @@ WHERE id = ANY(chunkIds)
 
 ---
 
+## 4. LLM API 사용 구조
+
+RAG 파이프라인에서 LLM은 세 곳에서 호출된다. 모두 동일한 LM Studio OpenAI 호환 API를 사용하지만 역할과 설정이 다르다.
+
+### 연결 방식
+
+```typescript
+// @ai-sdk/openai의 createOpenAI로 LM Studio에 연결
+// LM Studio는 OpenAI API 형식을 그대로 지원 (baseURL만 바꾸면 됨)
+const lmstudio = createOpenAI({
+  baseURL: `${process.env.OLLAMA_BASE_URL}/v1`,  // 예: http://192.168.219.1:1234/v1
+  apiKey: 'lm-studio',                            // LM Studio는 키 검증 안 함 — 임의값
+})
+```
+
+**패키지 버전 제약**: `ai@4` + `@ai-sdk/react@0` + `@ai-sdk/openai@0` 조합만 사용.  
+v5/v6는 `ollama-ai-provider`와 `LanguageModelV1 vs V2` 타입 불일치로 사용 불가.
+
+---
+
+### 호출 1 — 메인 답변 생성 (`app/api/chat/route.ts`)
+
+```typescript
+const result = streamText({
+  model: lmstudio(modelId || 'local-model'),  // UI 드롭다운에서 선택한 모델 ID
+  system: systemPrompt,                        // 컨텍스트 종류에 따라 4종 중 하나 선택
+  messages: cleanedMessages,                   // 대화 히스토리 전체
+  temperature: 0.05,                           // 낮게 설정 — 금융 수치 할루시네이션 억제
+  experimental_telemetry: { isEnabled: true }, // Phoenix OTel 추적
+})
+```
+
+- `modelId`는 프론트엔드 모델 선택 드롭다운(`ChatInterface.tsx`)에서 전달
+- `streamText()`는 응답을 청크 단위로 스트리밍 — 첫 토큰까지 대기 없이 즉시 화면에 표시
+- 스트리밍이 끝난 뒤 `result.text`(Promise)로 완성된 전체 텍스트를 비동기 획득
+
+---
+
+### 호출 2 — 쿼리 재작성 (`lib/query-rewrite.ts`)
+
+짧은 단어 입력을 벡터 검색에 유리한 서술형 질문으로 변환한다.
+
+```typescript
+// 재작성 조건: 30자 이하 AND 한국어 조사 없음
+const { text } = await generateText({
+  model: lmstudio(modelId),
+  system: '한국어 전용 금융 검색 도우미. 한자·일본어 절대 금지.',
+  prompt: `입력: ${question}\n재작성:`,
+  temperature: 0.2,   // 메인 답변(0.05)보다 약간 높음 — 표현 다양성 허용
+  maxTokens: 120,     // 한 문장이면 충분 — 토큰 낭비 방지
+})
+```
+
+| 항목 | 값 | 이유 |
+|------|---|------|
+| temperature | 0.2 | 같은 단어도 문맥마다 다른 질문으로 확장 가능해야 함 |
+| maxTokens | 120 | 한 문장(30~60자) 생성이 목적 |
+| 결과 검증 | 한자·일본어 포함 시 원문 반환 | LLM이 오염된 언어 사용 시 검색 품질 저하 방지 |
+
+재작성된 쿼리는 **벡터 검색 전용** — 캐시 키, 화면 표시, LLM 입력 메시지는 원문 그대로.
+
+---
+
+### 호출 3 — RAG 품질 평가 (`lib/rag-eval.ts`)
+
+스트리밍 완료 후 동일 LLM을 심사위원(LLM-as-a-Judge)으로 사용해 답변 품질을 평가한다.
+
+```typescript
+const { text } = await generateText({
+  model: judge(modelId),
+  prompt: buildJudgePrompt(question, context, answer),
+  temperature: 0,     // 평가는 결정론적이어야 함 — 같은 입력에 같은 점수
+})
+// 출력 예: {"context_relevance":4,"faithfulness":5,"answer_relevance":4,"reasoning":"..."}
+```
+
+LLM이 1~5점으로 평가한 값을 5로 나눠 0~1 범위로 정규화:
+
+| 지표 | 의미 | 활용 |
+|------|------|------|
+| `context_relevance` | 검색 청크가 질문과 관련 있는가 | 검색 품질 모니터링 |
+| `faithfulness` | 답변이 컨텍스트에만 근거하는가 | 할루시네이션 감지 |
+| `answer_relevance` | 답변이 질문 의도에 맞는가 | 응답 품질 모니터링 |
+
+결과는 Phoenix(`http://localhost:6006`)에 OTel span annotation으로 전송.  
+`temperature: 0`으로 설정해 동일 입력에 항상 동일한 점수가 나오도록 보장한다.
+
+---
+
+### 세 호출의 설정 비교
+
+| 호출 위치 | 함수 | temperature | maxTokens | 스트리밍 |
+|----------|------|:-----------:|:---------:|:-------:|
+| 메인 답변 | `streamText()` | 0.05 | 제한 없음 | ✅ |
+| 쿼리 재작성 | `generateText()` | 0.2 | 120 | ❌ |
+| RAG 평가 | `generateText()` | 0 | 제한 없음 | ❌ |
+
+---
+
 ## 관련 파일
 
 | 파일 | 역할 |
