@@ -350,6 +350,162 @@ LLM이 1~5점으로 평가한 값을 5로 나눠 0~1 범위로 정규화:
 
 ---
 
+## 5. 질문·답변 캐싱 흐름
+
+LLM 호출은 비용(시간·연산)이 크다. 동일하거나 의미적으로 유사한 질문이 반복될 때 LLM 없이 저장된 답변을 즉시 반환하기 위해 2단계 캐시를 운영한다.
+
+### 캐시 저장 구조 (`rag_cache` 테이블)
+
+```
+rag_cache 테이블
+├── cache_key   — SHA-256 해시 (정규화 질문 + 문서 범위)  @unique
+├── question    — 정규화된 질문 원문
+├── doc_scope   — 검색 범위 JSON {"category":"all","names":["doc1",...]}
+├── answer      — LLM이 생성한 완성된 답변 전체
+├── chunk_ids   — 답변 생성에 쓰인 청크 UUID 배열
+├── embedding   — vector(768), 질문 임베딩 벡터 (Semantic Match용)
+├── hit_count   — 캐시 히트 횟수
+└── last_hit_at — 마지막 히트 시각
+```
+
+---
+
+### 캐시 키 생성 (`lib/rag-cache.ts`)
+
+캐시 키는 **질문 + 문서 범위**를 합쳐 SHA-256으로 해싱한다.  
+같은 질문이라도 검색 대상 문서가 다르면 다른 키가 생성된다.
+
+```typescript
+// Step 1: 질문 정규화 (대소문자·공백 통일)
+const normalizedQ = normalizeQuestion(userQuestion)
+// "중도해지 이율은?" → "중도해지 이율은?"  (소문자 + 공백 정규화)
+
+// Step 2: 문서 범위 직렬화 (docNames 정렬 후 JSON)
+const docScope = buildDocScope(docCategory, docNames)
+// → '{"category":"product","names":["KB 정기예금 약관"]}'
+
+// Step 3: SHA-256 해싱 (null 바이트로 구분)
+const cacheKey = sha256(normalizedQ + '\x00' + docScope)
+// → "a3f8c2d1..." (64자 hex)
+```
+
+---
+
+### 1단계 — Exact Match (임베딩 전)
+
+질문을 벡터화하기 전에 먼저 해시만으로 빠르게 조회한다.
+
+```
+질문 입력
+    │
+    ▼
+SHA-256 해시 계산
+    │
+    ▼
+rag_cache WHERE cache_key = ?
+    │
+    ├── HIT  → answer를 스트림으로 즉시 반환  (LLM·임베딩 호출 0회)
+    │           hitCount + 1, lastHitAt 갱신
+    │
+    └── MISS → 다음 단계로
+```
+
+- DB 인덱스(`idx_rag_cache_key`) 단일 조회 — 수 밀리초
+- 캐시 응답도 일반 응답과 동일한 스트림 형식(`ReadableStream`) 반환 → 프론트엔드 변경 불필요
+- 응답 헤더: `X-Cache: HIT`
+
+---
+
+### 2단계 — Semantic Match (임베딩 후)
+
+Exact Match 실패 시 질문을 임베딩한 뒤 저장된 캐시 벡터들과 코사인 유사도를 비교한다.
+
+```
+질문 임베딩 (embedOne)
+    │
+    ▼
+rag_cache에서 pgvector 코사인 유사도 계산
+WHERE doc_scope = ? AND 유사도 >= 0.95
+ORDER BY 거리 ASC
+LIMIT 1
+    │
+    ├── HIT  → 가장 유사한 캐시 답변 반환  (LLM 호출 0회)
+    │           hitCount + 1, lastHitAt 갱신
+    │
+    └── MISS → 벡터 검색 → LLM 생성으로 진행
+```
+
+**임계값 0.95로 높게 설정한 이유**: 금융 약관 QA에서는 비슷해 보이는 질문도 다른 답을 요구하는 경우가 많다.
+
+```
+"중도해지 이율은?"  →  코사인 유사도 0.97  →  HIT  ✅ (같은 의미)
+"만기 시 이율은?"   →  코사인 유사도 0.82  →  MISS ✅ (다른 내용)
+"중도해지 가능한가?" → 코사인 유사도 0.91  →  MISS ✅ (다른 내용)
+```
+
+---
+
+### 캐시 저장 (스트리밍 완료 후)
+
+LLM 스트리밍이 끝난 뒤 `result.text` Promise가 해결되면 비동기로 저장된다. 응답 자체에는 영향 없음.
+
+```typescript
+// RAG 컨텍스트를 사용한 경우에만 저장 (contextSource === 'rag')
+result.text.then(async (answer) => {
+  await saveCache({
+    cacheKey,       // SHA-256 키
+    question:       normalizedQ,
+    docScope,
+    answer,         // LLM 완성 답변 전체
+    chunkIds:       ragChunks.map(c => c.id),
+    queryEmbedding: queryVec,  // Semantic Match에서 재사용
+  })
+})
+
+// INSERT INTO rag_cache ... ON CONFLICT (cache_key) DO NOTHING
+// → 동시 요청으로 같은 키가 이미 저장된 경우 무시 (멱등)
+```
+
+---
+
+### 캐시 무효화 (문서 재업로드 시)
+
+같은 문서가 다시 업로드되면 해당 문서로 생성된 캐시가 오래된 약관을 기반으로 하므로 자동 삭제된다.
+
+```typescript
+// saveChunks() 내부에서 청크 삭제와 함께 호출
+await invalidateCacheByDocName(docName)
+
+// DELETE FROM rag_cache WHERE doc_scope LIKE '%"doc_name"%'
+```
+
+---
+
+### 캐시가 적용되지 않는 경우
+
+| 상황 | 이유 |
+|------|------|
+| `isEmployee = true` | 직원 채팅은 실시간성이 중요, 캐시 스킵 |
+| 상품 검색 질문 (`상품·금리·예금` 등 키워드) | 금리 변동 시 stale 답변 방지 |
+| `retrievedContext` (수동 컨텍스트) | 파일 내용이 매번 달라질 수 있음 |
+| `useRag = false` | RAG 비활성화 시 캐시도 비활성화 |
+| RAG 컨텍스트가 없는 일반 응답 | 저장할 청크 ID가 없어 저장 생략 |
+
+---
+
+### 캐시 효과 요약
+
+```
+첫 번째 질문 (MISS)
+  임베딩(1회) + LLM 호출(1회) → 응답 생성 → rag_cache에 저장
+
+이후 동일/유사 질문 (HIT)
+  Exact: 해시 조회만 → 즉시 응답  (임베딩·LLM 0회)
+  Semantic: 임베딩(1회) + pgvector 조회 → 즉시 응답  (LLM 0회)
+```
+
+---
+
 ## 관련 파일
 
 | 파일 | 역할 |
