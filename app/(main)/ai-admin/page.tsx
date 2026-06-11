@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: 'AI 관리' }
 
 export default async function AiAdminPage() {
   const session = await auth()
-  if (!session?.user?.isEmployee) redirect('/dashboard')
+  if (!session?.user?.isAdmin) redirect(session?.user?.isEmployee ? '/chat' : '/dashboard')
 
   const [feedbackStats, cacheStats, docCount, chunkStats, recentFeedbacks] =
     await Promise.all([

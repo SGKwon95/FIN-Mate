@@ -9,16 +9,20 @@ import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X, ShieldCheck, 
 import { cn } from "@/lib/utils"
 import { switchToCustomer } from "@/app/(main)/switch-role-action"
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { href: "/chat",           label: "AI 상담",     icon: MessageSquare },
   { href: "/loan-review",    label: "대출 심사",   icon: ClipboardList },
   { href: "/account-limits", label: "고객계좌관리", icon: ShieldCheck },
-  { href: "/ai-admin",       label: "AI 관리",     icon: BarChart3 },
+]
+const ADMIN_NAV_ITEMS = [
+  { href: "/ai-admin", label: "AI 관리", icon: BarChart3 },
 ]
 
 export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCustomer?: boolean }) {
   const { data: session } = useSession()
   const userName = session?.user?.name ?? "직원"
+  const isAdmin = session?.user?.isAdmin === true
+  const navItems = isAdmin ? [...BASE_NAV_ITEMS, ...ADMIN_NAV_ITEMS] : BASE_NAV_ITEMS
   const pathname = usePathname()
   const [showAlert, setShowAlert] = useState(false)
 
@@ -49,7 +53,7 @@ export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCusto
             </div>
 
             <nav className="flex items-center gap-1">
-              {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+              {navItems.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}

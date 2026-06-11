@@ -11,7 +11,9 @@ const CUSTOMER_ONLY = [
   "/analysis", "/recommend",
 ]
 // 직원 전용 경로 — 고객 접근 차단
-const EMPLOYEE_ONLY = ["/chat", "/loan-review", "/ai-admin"]
+const EMPLOYEE_ONLY = ["/chat", "/loan-review"]
+// 관리자 전용 경로 — 일반 직원·고객 모두 차단
+const ADMIN_ONLY = ["/ai-admin"]
 
 export default auth(function proxy(req) {
   const isLoggedIn = !!req.auth
@@ -39,6 +41,10 @@ export default auth(function proxy(req) {
     // 고객(또는 고객 모드 직원)이 직원 전용 경로 접근 → /dashboard
     if (!effectiveEmployee && EMPLOYEE_ONLY.some(p => pathname.startsWith(p))) {
       return NextResponse.redirect(new URL("/dashboard", req.url))
+    }
+    // 관리자 아닌 사용자가 관리자 전용 경로 접근 → 직원이면 /chat, 고객이면 /dashboard
+    if (!req.auth?.user?.isAdmin && ADMIN_ONLY.some(p => pathname.startsWith(p))) {
+      return NextResponse.redirect(new URL(effectiveEmployee ? "/chat" : "/dashboard", req.url))
     }
   }
 
