@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import {
-  LayoutDashboard, MessageSquare, Database, FileText,
+  LayoutDashboard, MessageSquare, Database, FileText, Activity,
   ThumbsUp, ThumbsDown, Trash2, Layers, Zap,
   HelpCircle, Loader2, AlertTriangle,
 } from 'lucide-react'
@@ -50,7 +50,7 @@ type DocQualityItem = {
 }
 
 type FeedbackFilter = 'all' | 'up' | 'down' | 'none'
-type Tab = 'dashboard' | 'feedback' | 'cache' | 'quality'
+type Tab = 'dashboard' | 'feedback' | 'cache' | 'quality' | 'phoenix'
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
@@ -130,16 +130,19 @@ const TABS: { key: Tab; label: string; icon: IconComp }[] = [
   { key: 'feedback',  label: '피드백',   icon: MessageSquare },
   { key: 'cache',     label: '캐시',     icon: Database },
   { key: 'quality',   label: '문서 품질', icon: FileText },
+  { key: 'phoenix',   label: 'Phoenix',  icon: Activity },
 ]
 
 export default function AiAdminClient({
   stats,
   recentFeedbacks,
   isAdmin,
+  phoenixUrl,
 }: {
   stats: Stats
   recentFeedbacks: FeedbackItem[]
   isAdmin: boolean
+  phoenixUrl: string
 }) {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([])
@@ -155,7 +158,7 @@ export default function AiAdminClient({
   async function switchTab(tab: Tab) {
     setActiveTab(tab)
     setError(null)
-    if (loaded.current.has(tab)) return
+    if (tab === 'phoenix' || loaded.current.has(tab)) return
 
     setLoading(true)
     try {
@@ -472,6 +475,17 @@ export default function AiAdminClient({
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── Phoenix 탭 ── */}
+      {activeTab === 'phoenix' && (
+        <div className="rounded-2xl overflow-hidden border border-gray-200" style={{ height: '80vh' }}>
+          <iframe
+            src={phoenixUrl}
+            className="w-full h-full"
+            title="Arize Phoenix"
+          />
         </div>
       )}
     </div>

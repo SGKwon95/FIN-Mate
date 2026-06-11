@@ -62,6 +62,7 @@ export default async function AiAdminPage() {
         createdAt:  f.createdAt.toISOString(),
       }))}
       isAdmin={session.user.isAdmin === true}
+      phoenixUrl={process.env.PHOENIX_ENDPOINT ?? 'http://localhost:6006'}
     />
   )
 }
