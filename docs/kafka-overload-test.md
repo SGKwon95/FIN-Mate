@@ -154,6 +154,73 @@ docker exec -it postgres psql -U postgres fin-mate -c \
 
 ---
 
+## 실행 순서 요약
+
+1. 토픽 재생성 확인 (`PartitionCount:3, RF:3`)
+2. 잔액 증액 (5억원)
+3. `npm run dev` + `npm run kafka:all` 기동
+4. Scenario A 실행 + 결과 REPORT.md에 기록
+5. 잔액 재증액 (A에서 소진)
+6. Scenario B 실행 + 결과 기록
+7. 잔액 재증액
+8. Scenario C 실행 + 결과 기록
+9. 잔액 재증액
+10. Scenario D 실행 + 결과 기록
+
+## 검증 포인트
+
+- 토픽 확인: `PartitionCount: 3, ReplicationFactor: 3`
+- k6 결과: `http_req_duration p(95)`, `http_req_failed rate`, `transfer_error_rate`
+- Kafka lag: `watch-lag.sh` 출력 — 시나리오별 최대값과 복구 시간
+- DB 정합성: `SELECT transaction_status, count(*) FROM transaction WHERE memo LIKE 'overload-%' GROUP BY 1,2`
+
+---
+
+## Part 3. 실제 테스트 결과
+
+### Scenario A — 컨슈머 과부하 (Consumer Kill & Recovery)
+
+**실행일**: 2026-06-04  
+**설정**: 200 VU, 7분 (워밍업 50 VU 30s → 200 VU 6m → 쿨다운)
+
+#### k6 결과
+
+| 지표 | 측정값 | 임계값 | 판정 |
+|---|---|---|---|
+| `http_req_failed rate` | **0.35%** | < 30% | ✅ PASS |
+| `transfer_error_rate` | **0.35%** | < 30% | ✅ PASS |
+| 처리량 | **48.8 req/s** | — | — |
+| avg 응답시간 | **3.26s** | — | — |
+| p(90) | **4.96s** | — | — |1
+| p(95) | **5.7s** | — | — |
+| max | **10s** (timeout) | — | — |
+| 성공 건수 | **20,339** / 20,411 | — | — |
+| 실패 건수 | **72** | — | — |
+
+#### Consumer Lag 추이
+
+```
+settlement-consumer kill 이전: 정상 드레인 유지
+kill 직후 최대 lag: 1,311
+consumer 재시작 후: <20 (즉시 감소)
+```
+
+#### DB 처리 건수 (memo = 'overload-consumer-lag')
+
+| transaction_status | count |
+|---|---|
+| COMPLETED | 1,291 |
+| FAILED | 62 |
+| PENDING | 94,988 (이전 테스트 누적분 포함) |
+
+#### 분석
+
+- **HTTP 에러율 0.35%** — settlement consumer가 kill된 상태에서도 극히 낮음. `executeTransfer()`가 DB에 PENDING 기록 + Kafka 발행 후 HTTP 200 반환하는 구조 덕분에 consumer 장애가 HTTP 응답에 직접 영향 없음.
+- **72건 실패** — DB `$transaction` 타임아웃(15s) 초과 건. 데이터 손실이 아닌 처리 지연.
+- **at-least-once delivery 확인** — consumer 재시작 즉시 lag 1,311 → <20으로 드레인. `fromBeginning: false`로 커밋된 offset부터 재처리.
+- **복구 시간** — 재시작 후 3초 이내 lag 정상화 (watch-lag 1 틱 내 감소).
+- **이전 테스트 대비**: pool max=50 증설 + VarChar(10→30) 수정으로 에러율 38.89% → 0.35%로 대폭 개선.
+
 ---
 
 ### Scenario B — 브로커 장애 내성 (1-broker Down)
@@ -318,75 +385,6 @@ npm run kafka:settlement
 - **max=11.25s** — rebalance 발생 시 일부 DB 락 대기 증가. consumer가 파티션을 전량 인수하는 순간 처리 폭주로 DB 경합 발생.
 - **`sessionTimeout=10s` 효과** — consumer kill 후 최대 10s 이내 리밸런스 감지. 기존 30s 대비 3배 빠른 복구.
 - **Scenario A와 비교**: 단일 consumer kill(A) vs 규모 변화(D) 모두 HTTP 에러율 1% 미만으로 내성 우수.
-
----
-
-## 실행 순서 요약
-
-1. 토픽 재생성 확인 (`PartitionCount:3, RF:3`)
-2. 잔액 증액 (5억원)
-3. `npm run dev` + `npm run kafka:all` 기동
-4. Scenario A 실행 + 결과 REPORT.md에 기록
-5. 잔액 재증액 (A에서 소진)
-6. Scenario B 실행 + 결과 기록
-7. 잔액 재증액
-8. Scenario C 실행 + 결과 기록
-9. 잔액 재증액
-10. Scenario D 실행 + 결과 기록
-
-## 검증 포인트
-
-- 토픽 확인: `PartitionCount: 3, ReplicationFactor: 3`
-- k6 결과: `http_req_duration p(95)`, `http_req_failed rate`, `transfer_error_rate`
-- Kafka lag: `watch-lag.sh` 출력 — 시나리오별 최대값과 복구 시간
-- DB 정합성: `SELECT transaction_status, count(*) FROM transaction WHERE memo LIKE 'overload-%' GROUP BY 1,2`
-
----
-
-## Part 3. 실제 테스트 결과
-
-### Scenario A — 컨슈머 과부하 (Consumer Kill & Recovery)
-
-**실행일**: 2026-06-04  
-**설정**: 200 VU, 7분 (워밍업 50 VU 30s → 200 VU 6m → 쿨다운)
-
-#### k6 결과
-
-| 지표 | 측정값 | 임계값 | 판정 |
-|---|---|---|---|
-| `http_req_failed rate` | **0.35%** | < 30% | ✅ PASS |
-| `transfer_error_rate` | **0.35%** | < 30% | ✅ PASS |
-| 처리량 | **48.8 req/s** | — | — |
-| avg 응답시간 | **3.26s** | — | — |
-| p(90) | **4.96s** | — | — |1
-| p(95) | **5.7s** | — | — |
-| max | **10s** (timeout) | — | — |
-| 성공 건수 | **20,339** / 20,411 | — | — |
-| 실패 건수 | **72** | — | — |
-
-#### Consumer Lag 추이
-
-```
-settlement-consumer kill 이전: 정상 드레인 유지
-kill 직후 최대 lag: 1,311
-consumer 재시작 후: <20 (즉시 감소)
-```
-
-#### DB 처리 건수 (memo = 'overload-consumer-lag')
-
-| transaction_status | count |
-|---|---|
-| COMPLETED | 1,291 |
-| FAILED | 62 |
-| PENDING | 94,988 (이전 테스트 누적분 포함) |
-
-#### 분석
-
-- **HTTP 에러율 0.35%** — settlement consumer가 kill된 상태에서도 극히 낮음. `executeTransfer()`가 DB에 PENDING 기록 + Kafka 발행 후 HTTP 200 반환하는 구조 덕분에 consumer 장애가 HTTP 응답에 직접 영향 없음.
-- **72건 실패** — DB `$transaction` 타임아웃(15s) 초과 건. 데이터 손실이 아닌 처리 지연.
-- **at-least-once delivery 확인** — consumer 재시작 즉시 lag 1,311 → <20으로 드레인. `fromBeginning: false`로 커밋된 offset부터 재처리.
-- **복구 시간** — 재시작 후 3초 이내 lag 정상화 (watch-lag 1 틱 내 감소).
-- **이전 테스트 대비**: pool max=50 증설 + VarChar(10→30) 수정으로 에러율 38.89% → 0.35%로 대폭 개선.
 
 ---
 
