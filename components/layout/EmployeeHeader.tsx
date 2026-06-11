@@ -5,12 +5,13 @@ import { useSession } from "next-auth/react"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import Link from "next/link"
-import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X, ShieldCheck, BarChart3 } from "lucide-react"
+import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X, ShieldCheck, BarChart3, FolderOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { switchToCustomer } from "@/app/(main)/switch-role-action"
 
 const BASE_NAV_ITEMS = [
   { href: "/chat",           label: "AI 상담",     icon: MessageSquare },
+  { href: "/docs",           label: "문서 관리",   icon: FolderOpen    },
   { href: "/loan-review",    label: "대출 심사",   icon: ClipboardList },
   { href: "/account-limits", label: "고객계좌관리", icon: ShieldCheck },
 ]
