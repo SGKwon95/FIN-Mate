@@ -299,7 +299,7 @@ npm run langsmith:eval                   # LangSmith RAG 오프라인 평가
 
 ## 부하 테스트
 
-[scripts/load-test/REPORT.md](scripts/load-test/REPORT.md)
+[docs/kafka-overload-test.md](docs/kafka-overload-test.md)
 
 ---
 
