@@ -1,10 +1,10 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import {
   LayoutDashboard, MessageSquare, Database, FileText, Activity,
   ThumbsUp, ThumbsDown, Trash2, Layers, Zap,
-  HelpCircle, Loader2, AlertTriangle,
+  HelpCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -50,15 +50,32 @@ type DocQualityItem = {
 }
 
 type FeedbackFilter = 'all' | 'up' | 'down' | 'none'
-type Tab = 'dashboard' | 'feedback' | 'cache' | 'quality' | 'phoenix'
+type Tab = 'dashboard' | 'feedback' | 'cache' | 'quality' | 'traces'
+
+type TraceItem = {
+  spanId:    string
+  traceId:   string
+  question:  string
+  answer:    string
+  startTime: string
+  totalMs:   number
+  llmMs:     number | null
+  dbMs:      number | null
+  status:    string
+  chunks:    { document_id?: string; document_content?: string; document_score?: number; document_metadata?: { docName?: string } }[]
+  prompt:    { role?: string; content?: string | { text?: string }[] }[]
+  evals:     Record<string, number>
+}
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────────────────
 
 function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString('ko-KR', {
-    month: '2-digit', day: '2-digit',
-    hour: '2-digit',  minute: '2-digit',
-  })
+  const d = new Date(iso)
+  const mm  = String(d.getMonth() + 1).padStart(2, '0')
+  const dd  = String(d.getDate()).padStart(2, '0')
+  const hh  = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  return `${mm}.${dd}. ${hh}:${min}`
 }
 
 function parsedDocScope(docScope: string): string {
@@ -130,7 +147,7 @@ const TABS: { key: Tab; label: string; icon: IconComp }[] = [
   { key: 'feedback',  label: '피드백',   icon: MessageSquare },
   { key: 'cache',     label: '캐시',     icon: Database },
   { key: 'quality',   label: '문서 품질', icon: FileText },
-  { key: 'phoenix',   label: 'Phoenix',  icon: Activity },
+  { key: 'traces',    label: '트레이스',  icon: Activity },
 ]
 
 export default function AiAdminClient({
@@ -148,6 +165,8 @@ export default function AiAdminClient({
   const [feedbacks, setFeedbacks] = useState<FeedbackItem[]>([])
   const [caches, setCaches]       = useState<CacheItem[]>([])
   const [docQualities, setDocQualities] = useState<DocQualityItem[]>([])
+  const [traces, setTraces]       = useState<TraceItem[]>([])
+  const [expandedTrace, setExpandedTrace] = useState<string | null>(null)
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all')
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState<string | null>(null)
@@ -158,7 +177,7 @@ export default function AiAdminClient({
   async function switchTab(tab: Tab) {
     setActiveTab(tab)
     setError(null)
-    if (tab === 'phoenix' || loaded.current.has(tab)) return
+    if (loaded.current.has(tab)) return
 
     setLoading(true)
     try {
@@ -174,6 +193,13 @@ export default function AiAdminClient({
         const res = await fetch('/api/admin/ai/stats?type=quality')
         if (!res.ok) throw new Error()
         setDocQualities(await res.json())
+      } else if (tab === 'traces') {
+        const res = await fetch('/api/admin/ai/traces')
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({})) as { error?: string }
+          throw new Error(body.error ?? `HTTP ${res.status}`)
+        }
+        setTraces(await res.json())
       }
       loaded.current.add(tab)
     } catch {
@@ -478,14 +504,161 @@ export default function AiAdminClient({
         </div>
       )}
 
-      {/* ── Phoenix 탭 ── */}
-      {activeTab === 'phoenix' && (
-        <div className="rounded-2xl overflow-hidden border border-gray-200" style={{ height: '80vh' }}>
-          <iframe
-            src={phoenixUrl}
-            className="w-full h-full"
-            title="Arize Phoenix"
-          />
+      {/* ── 트레이스 탭 ── */}
+      {!loading && activeTab === 'traces' && (
+        <div className="space-y-3">
+          {/* Phoenix 링크 */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-kb-gray">최근 30건 (Phoenix 데이터)</p>
+            <a
+              href={phoenixUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-kb-navy hover:underline"
+            >
+              <Activity className="w-3 h-3" />
+              Phoenix 전체 보기 ↗
+            </a>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-kb-gray-border bg-kb-gray-light/50">
+                  <th className="w-6" />
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-kb-navy">질문</th>
+                  <th className="px-3 py-3 text-xs font-semibold text-kb-navy w-24 text-right">전체 ms</th>
+                  <th className="px-3 py-3 text-xs font-semibold text-kb-navy w-20 text-right hidden sm:table-cell">LLM ms</th>
+                  <th className="px-3 py-3 text-xs font-semibold text-kb-navy w-20 text-right hidden sm:table-cell">DB ms</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-kb-navy w-32 text-center">평가</th>
+                  <th className="px-3 py-3 text-xs font-semibold text-kb-navy w-28 text-right">시각</th>
+                </tr>
+              </thead>
+              <tbody>
+                {traces.map(t => {
+                  const isExpanded = expandedTrace === t.spanId
+                  const evalKeys = Object.keys(t.evals)
+                  return (
+                    <Fragment key={t.spanId}>
+                      <tr
+                        className="border-b border-kb-gray-border hover:bg-kb-gray-light/30 cursor-pointer"
+                        onClick={() => setExpandedTrace(isExpanded ? null : t.spanId)}
+                      >
+                        <td className="pl-3 py-3 text-kb-gray">
+                          {isExpanded
+                            ? <ChevronDown className="w-3.5 h-3.5" />
+                            : <ChevronRight className="w-3.5 h-3.5" />}
+                        </td>
+                        <td className="px-4 py-3 max-w-xs">
+                          <p className="truncate text-kb-navy/80">{t.question || '(질문 없음)'}</p>
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-xs text-kb-navy">{t.totalMs}</td>
+                        <td className="px-3 py-3 text-right font-mono text-xs text-kb-gray hidden sm:table-cell">{t.llmMs ?? '-'}</td>
+                        <td className="px-3 py-3 text-right font-mono text-xs text-kb-gray hidden sm:table-cell">{t.dbMs ?? '-'}</td>
+                        <td className="px-4 py-3 text-center">
+                          {evalKeys.length > 0 ? (
+                            <div className="flex items-center justify-center gap-1">
+                              {evalKeys.map(k => {
+                                const v = t.evals[k]
+                                const color = v >= 0.8 ? 'bg-green-400' : v >= 0.5 ? 'bg-amber-400' : 'bg-red-400'
+                                return <span key={k} title={`${k}: ${v.toFixed(2)}`} className={`w-2 h-2 rounded-full ${color}`} />
+                              })}
+                            </div>
+                          ) : <span className="text-kb-gray text-xs">-</span>}
+                        </td>
+                        <td className="px-3 py-3 text-right text-kb-gray text-xs">{formatDateTime(t.startTime)}</td>
+                      </tr>
+                      {isExpanded && (
+                        <tr key={`${t.spanId}-detail`} className="border-b border-kb-gray-border bg-kb-gray-light/20">
+                          <td colSpan={7} className="px-4 py-4 space-y-4">
+                            {/* 평가 점수 */}
+                            {evalKeys.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-kb-navy mb-2">LLM 평가 점수</p>
+                                <div className="flex flex-wrap gap-3">
+                                  {evalKeys.map(k => {
+                                    const v = t.evals[k]
+                                    const { text, bg } = qualityStyle(v)
+                                    const label = k === 'context_relevance' ? '문맥 관련성'
+                                      : k === 'faithfulness' ? '충실도'
+                                      : k === 'answer_relevance' ? '답변 관련성' : k
+                                    return (
+                                      <div key={k} className={cn('px-3 py-1.5 rounded-xl text-xs font-medium', bg, text)}>
+                                        {label}: {v.toFixed(2)}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 검색된 청크 */}
+                            {t.chunks.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-kb-navy mb-2">검색된 청크 ({t.chunks.length}개)</p>
+                                <div className="space-y-1.5">
+                                  {t.chunks.map((c, i) => (
+                                    <div key={i} className="bg-white rounded-xl p-3 border border-kb-gray-border">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-[11px] font-medium text-kb-navy">{c.document_metadata?.docName ?? `청크 ${i + 1}`}</span>
+                                        {c.document_score != null && (
+                                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-mono">
+                                            score {c.document_score.toFixed(3)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-kb-gray leading-relaxed line-clamp-3">{c.document_content}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* LLM 프롬프트 */}
+                            {t.prompt.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-kb-navy mb-2">LLM 프롬프트</p>
+                                <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                                  {t.prompt.map((msg, i) => {
+                                    const content = Array.isArray(msg.content)
+                                      ? msg.content.map(p => p.text ?? '').join('')
+                                      : (msg.content ?? '')
+                                    return (
+                                      <div key={i} className={cn(
+                                        'rounded-xl p-3 text-xs leading-relaxed',
+                                        msg.role === 'system' ? 'bg-amber-50 border border-amber-200 text-amber-900'
+                                          : msg.role === 'user' ? 'bg-blue-50 border border-blue-200 text-blue-900'
+                                          : 'bg-green-50 border border-green-200 text-green-900',
+                                      )}>
+                                        <span className="font-semibold uppercase text-[10px] tracking-wider mr-2">{msg.role}</span>
+                                        <span className="whitespace-pre-wrap line-clamp-4">{content}</span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 데이터 없음 */}
+                            {evalKeys.length === 0 && t.chunks.length === 0 && t.prompt.length === 0 && (
+                              <p className="text-xs text-kb-gray">
+                                세부 데이터 없음 — RAG 미사용 또는 Phoenix에 아직 전송되지 않은 span입니다.
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+                {traces.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-kb-gray text-sm">
+                    트레이스 없음 — Phoenix가 실행 중이고 채팅 요청이 있어야 데이터가 나타납니다.
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

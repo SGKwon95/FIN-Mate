@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react'
 import { useRef, useEffect, useState } from 'react'
-import { Send, Bot, User, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Send, Bot, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
@@ -308,16 +308,11 @@ export default function ChatInterface({
               )}
             </div>
 
-            {m.role === 'user' && (
-              <div className="w-8 h-8 rounded-full bg-kb-yellow flex items-center justify-center shrink-0 mt-0.5">
-                <User className="w-4 h-4 text-kb-navy" />
-              </div>
-            )}
           </div>
         ))}
 
-        {/* 로딩 인디케이터 */}
-        {isLoading && (
+        {/* 로딩 인디케이터 — 첫 토큰 도착 전(사용자 메시지가 마지막)에만 표시 */}
+        {isLoading && messages.at(-1)?.role === 'user' && (
           <div className="flex gap-2.5 justify-start">
             <div className="w-8 h-8 rounded-full bg-kb-navy flex items-center justify-center shrink-0">
               <Bot className="w-4 h-4 text-kb-yellow" />

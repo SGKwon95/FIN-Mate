@@ -318,8 +318,8 @@ export async function POST(req: Request) {
   if (!isEmployee && productId) {
     // 상품 상세 페이지: 해당 상품만 조회
     customerProductContext = await buildSingleProductContext(productId).catch(() => '')
-  } else if (!isEmployee && PRODUCT_QUERY_RE.test(userQuestion)) {
-    // 상품 목록 페이지 또는 일반 질문: 전체 상품 조회
+  } else if (PRODUCT_QUERY_RE.test(userQuestion)) {
+    // 상품 목록 페이지 또는 일반 질문: 전체 상품 조회 (직원·고객 모두)
     customerProductContext = await buildCustomerProductContext(userQuestion).catch(() => '')
   }
 
@@ -606,6 +606,16 @@ ${LANGUAGE_RULE}`
     'input.value': userQuestion,
     'llm.invocation_parameters': JSON.stringify({ temperature: 0.05 }),
   })
+  if (ragChunks.length > 0) {
+    activeSpan?.setAttribute('retrieval.documents', JSON.stringify(
+      ragChunks.map(c => ({
+        document_id:      c.id,
+        document_content: c.content.slice(0, 400),
+        document_score:   Number(c.similarity.toFixed(3)),
+        document_metadata: { docName: c.docName },
+      }))
+    ))
+  }
 
   // chat_feedback 레코드 생성 (피드백 버튼용)
   const feedbackRecord = await prisma.chatFeedback.create({
