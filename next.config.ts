@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: [
     "better-sqlite3",
     "kafkajs",
+    "minio",
     "@opentelemetry/sdk-node",
     "@opentelemetry/auto-instrumentations-node",
     "@opentelemetry/exporter-trace-otlp-http",

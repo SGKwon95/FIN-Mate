@@ -296,7 +296,7 @@ export default async function ProductDetailPage({
         </Link>
       ) : null}
 
-      <ChatPopup contextUrls={termsUrls} productContext={productContext} />
+      <ChatPopup contextUrls={termsUrls} productContext={productContext} productId={productId} />
     </div>
   )
 }

@@ -19,7 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { loginId: credentials.loginId as string },
           include: {
             party: {
-              select: { partyName: true, employee: { select: { employeeId: true } } },
+              select: { partyName: true, employee: { select: { employeeId: true, position: true } } },
             },
           },
         })
@@ -49,6 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: partyAuth.party.partyName,
           partyId: partyAuth.partyId,
           isEmployee: partyAuth.party.employee !== null,
+          isAdmin: partyAuth.party.employee?.position === "관리자",
           sessionToken,
         }
       },

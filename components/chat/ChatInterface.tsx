@@ -13,10 +13,12 @@ export default function ChatInterface({
   onClose,
   initialContext,
   docCategory,
+  productId,
 }: {
   onClose?: () => void
   initialContext?: string
   docCategory?: 'all' | 'banking' | 'product'
+  productId?: string
 } = {}) {
   const [models, setModels] = useState<Model[]>([])
   const [modelId, setModelId] = useState('')
@@ -65,7 +67,7 @@ export default function ChatInterface({
 
   const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: '/api/chat',
-    body: { modelId, retrievedContext, docCategory },
+    body: { modelId, retrievedContext, docCategory, productId },
     streamProtocol: 'text',
     onResponse: (response) => {
       const fid = response.headers.get('X-Feedback-Id')

@@ -3,6 +3,7 @@ import Link from "next/link"
 import { ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Metadata } from "next"
+import ChatPopup from "@/components/chat/ChatPopup"
 
 function formatLoanAmount(n: number): string {
   const eok    = Math.floor(n / 100_000_000)
@@ -126,6 +127,7 @@ export default async function LoanProductsPage({
           )
         })}
       </div>
+      <ChatPopup productContext={`현재 페이지: 대출 상품 목록 (${tab === "mortgage" ? "주택담보대출" : tab === "rent" ? "전세자금대출" : "신용대출"})`} />
     </div>
   )
 }

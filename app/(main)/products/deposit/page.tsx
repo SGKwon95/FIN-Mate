@@ -3,6 +3,7 @@ import Link from "next/link"
 import { ChevronRight, Shield } from "lucide-react"
 import { formatKRW } from "@/lib/formatters"
 import type { Metadata } from "next"
+import ChatPopup from "@/components/chat/ChatPopup"
 
 export const metadata: Metadata = { title: "정기예금" }
 
@@ -76,6 +77,7 @@ export default async function DepositProductsPage() {
           )
         })}
       </div>
+      <ChatPopup productContext="현재 페이지: 정기예금 상품 목록" />
     </div>
   )
 }
