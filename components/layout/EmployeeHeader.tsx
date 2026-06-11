@@ -84,7 +84,7 @@ export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCusto
             </button>
             <span className="text-white/80 text-sm hidden sm:inline">{userName} 님</span>
             <button
-              onClick={() => signOut({ redirectTo: "/login" })}
+              onClick={() => signOut({ redirectTo: `${window.location.origin}/login` })}
               className="flex items-center gap-1.5 text-white/70 hover:text-white text-xs transition-colors"
               aria-label="로그아웃"
             >
