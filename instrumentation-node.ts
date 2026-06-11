@@ -11,8 +11,10 @@ const tempoExporter = new OTLPHttpExporter({
   url: `${process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? 'http://localhost:4318'}/v1/traces`,
 })
 // Phoenix 16+: protobuf only (application/x-protobuf)
+// project_name 헤더로 프로젝트 지정 (없으면 "default" 프로젝트로 들어감)
 const phoenixExporter = new OTLPProtoExporter({
   url: `${process.env.PHOENIX_ENDPOINT ?? 'http://localhost:6006'}/v1/traces`,
+  headers: { 'project_name': process.env.PHOENIX_PROJECT_NAME ?? 'fin-mate' },
 })
 
 const sdk = new NodeSDK({
@@ -29,6 +31,16 @@ const sdk = new NodeSDK({
       '@opentelemetry/instrumentation-dns': { enabled: false },
       '@opentelemetry/instrumentation-net': { enabled: false },
       '@opentelemetry/instrumentation-http': {
+        ignoreIncomingRequestHook: (req) => {
+          const url = 'url' in req ? (req.url ?? '') : ''
+          // Prometheus polling, 정적 리소스, Next.js 내부 요청은 트레이스 제외
+          return (
+            url.startsWith('/api/metrics') ||
+            url.startsWith('/_next/') ||
+            url.startsWith('/favicon') ||
+            url === '/'
+          )
+        },
         requestHook: (span, req) => {
           const url = 'url' in req ? req.url : ''
           if (url) span.updateName(`${'method' in req ? req.method : 'HTTP'} ${url.split('?')[0]}`)

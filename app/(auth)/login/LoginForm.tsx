@@ -130,15 +130,50 @@ export default function LoginForm({ initialError }: { initialError?: string }) {
             </Link>
           </div>
 
-          {/* 개발용 힌트 */}
-          <div className="mt-6 p-3.5 bg-white/5 rounded-xl border border-white/10">
-            <p className="text-white/40 text-[11px] text-center mb-1">
-              개발용 테스트 계정
-            </p>
-            <p className="text-white/60 text-xs text-center font-mono">
-              testuser&nbsp;&nbsp;/&nbsp;&nbsp;Test1234!
-            </p>
-          </div>
+          {/* 개발용 힌트 — dev 모드에서만 표시 */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-6 p-3.5 bg-white/5 rounded-xl border border-white/10">
+              <p className="text-white/40 text-[11px] text-center mb-3">
+                개발용 테스트 계정 (클릭 시 자동 입력)
+              </p>
+
+              <p className="text-white/25 text-[10px] font-semibold tracking-widest mb-1 px-1">고객</p>
+              {[
+                { id: 'testuser',  pw: 'Test1234!', name: '홍길동' },
+                { id: 'testuser2', pw: 'Test1234!', name: '김민수' },
+              ].map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => { setLoginId(a.id); setPassword(a.pw); }}
+                  className="w-full flex justify-between items-center font-mono text-[11px] text-white/55 hover:text-white/90 hover:bg-white/5 px-2 py-1 rounded transition-colors"
+                >
+                  <span>{a.id}</span>
+                  <span className="text-white/30">{a.name}</span>
+                  <span>{a.pw}</span>
+                </button>
+              ))}
+
+              <p className="text-white/25 text-[10px] font-semibold tracking-widest mt-2.5 mb-1 px-1">직원</p>
+              {[
+                { id: 'emp01',    pw: 'Test1234!', name: '김직원' },
+                { id: 'emp02',    pw: 'Test1234!', name: '박직원' },
+                { id: 'empadmin', pw: 'Test1234!', name: '이관리자' },
+                { id: 'employee', pw: '1234',      name: '김직원' },
+              ].map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => { setLoginId(a.id); setPassword(a.pw); }}
+                  className="w-full flex justify-between items-center font-mono text-[11px] text-white/55 hover:text-white/90 hover:bg-white/5 px-2 py-1 rounded transition-colors"
+                >
+                  <span>{a.id}</span>
+                  <span className="text-white/30">{a.name}</span>
+                  <span>{a.pw}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

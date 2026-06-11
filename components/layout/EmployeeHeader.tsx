@@ -5,18 +5,25 @@ import { useSession } from "next-auth/react"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import Link from "next/link"
-import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X } from "lucide-react"
+import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X, ShieldCheck, BarChart3, FolderOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { switchToCustomer } from "@/app/(main)/switch-role-action"
 
-const NAV_ITEMS = [
-  { href: "/chat",        label: "AI 상담",   icon: MessageSquare },
-  { href: "/loan-review", label: "대출 심사", icon: ClipboardList },
+const BASE_NAV_ITEMS = [
+  { href: "/chat",           label: "AI 상담",     icon: MessageSquare },
+  { href: "/docs",           label: "문서 관리",   icon: FolderOpen    },
+  { href: "/loan-review",    label: "대출 심사",   icon: ClipboardList },
+  { href: "/account-limits", label: "고객계좌관리", icon: ShieldCheck },
+]
+const ADMIN_NAV_ITEMS = [
+  { href: "/ai-admin", label: "AI 관리", icon: BarChart3 },
 ]
 
 export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCustomer?: boolean }) {
   const { data: session } = useSession()
   const userName = session?.user?.name ?? "직원"
+  const isAdmin = session?.user?.isAdmin === true
+  const navItems = isAdmin ? [...BASE_NAV_ITEMS, ...ADMIN_NAV_ITEMS] : BASE_NAV_ITEMS
   const pathname = usePathname()
   const [showAlert, setShowAlert] = useState(false)
 
@@ -47,7 +54,7 @@ export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCusto
             </div>
 
             <nav className="flex items-center gap-1">
-              {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+              {navItems.map(({ href, label, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
@@ -78,7 +85,7 @@ export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCusto
             </button>
             <span className="text-white/80 text-sm hidden sm:inline">{userName} 님</span>
             <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => signOut({ redirectTo: `${window.location.origin}/login` })}
               className="flex items-center gap-1.5 text-white/70 hover:text-white text-xs transition-colors"
               aria-label="로그아웃"
             >

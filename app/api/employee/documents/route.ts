@@ -3,6 +3,7 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { htmlToPlainText, chunkDocument, saveChunks } from '@/lib/rag'
 import { embed } from '@/lib/embeddings'
+import { minioClient, BUCKET } from '@/lib/minio'
 import { spawn } from 'child_process'
 import { writeFile, unlink } from 'fs/promises'
 import { tmpdir } from 'os'
@@ -52,27 +53,37 @@ export async function POST(req: NextRequest) {
   if (!ALLOWED_EXTS.includes(ext))
     return NextResponse.json({ error: '.txt .md .html .htm .pdf 파일만 지원합니다.' }, { status: 400 })
 
+  const buffer = Buffer.from(await file.arrayBuffer())
+
   let text: string
   if (ext === '.pdf') {
-    text = await extractPdfText(await file.arrayBuffer())
+    text = await extractPdfText(buffer.buffer as ArrayBuffer)
   } else {
-    const raw = await file.text()
+    const raw = buffer.toString('utf8')
     text = (ext === '.html' || ext === '.htm') ? htmlToPlainText(raw) : raw
   }
 
   if (!text.trim()) return NextResponse.json({ error: '파일 내용이 비어 있습니다.' }, { status: 400 })
 
   const docName = `emp-${category}-${Date.now()}`
+  const mimeType = ALLOWED_TYPES[ALLOWED_EXTS.indexOf(ext)] ?? 'application/octet-stream'
+  const minioObject = `employee-docs/${docName}${ext}`
 
   const chunks = chunkDocument(text, docName)
   if (chunks.length === 0) return NextResponse.json({ error: '청크를 생성할 수 없습니다.' }, { status: 400 })
 
-  const allEmbeddings: number[][] = []
-  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-    const batch = chunks.slice(i, i + BATCH_SIZE)
-    const vecs  = await embed(batch.map(c => c.content))
-    allEmbeddings.push(...vecs)
-  }
+  const [allEmbeddings] = await Promise.all([
+    (async () => {
+      const embeddings: number[][] = []
+      for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+        const batch = chunks.slice(i, i + BATCH_SIZE)
+        const vecs  = await embed(batch.map(c => c.content))
+        embeddings.push(...vecs)
+      }
+      return embeddings
+    })(),
+    minioClient.putObject(BUCKET, minioObject, buffer, buffer.length, { 'Content-Type': mimeType }),
+  ])
 
   await saveChunks(chunks, allEmbeddings)
 
@@ -80,8 +91,8 @@ export async function POST(req: NextRequest) {
     data: {
       originalName:    file.name,
       storedName:      docName,
-      fileUrl:         `emp-doc://${docName}`,
-      mimeType:        ALLOWED_TYPES[ALLOWED_EXTS.indexOf(ext)] ?? 'text/plain',
+      fileUrl:         minioObject,
+      mimeType,
       fileSize:        BigInt(file.size),
       uploadStatus:    'COMPLETED',
       uploadedBy:      session.user.partyId,

@@ -53,7 +53,8 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
     },
   })
 
-  if (!account || account.partyId !== session.user.partyId) notFound()
+  const isEmployee = session.user.isEmployee === true
+  if (!isEmployee && account.partyId !== session.user.partyId) notFound()
 
   const isSavings = ["SAVINGS", "TIME_DEPOSIT"].includes(account.accountPurpose ?? "")
 
@@ -185,7 +186,7 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
       <div className="pb-24 lg:pb-6">
         <TransactionList transactions={serializedTxs} />
 
-        {isSavings && (
+        {isSavings && isEmployee && (
           <div className="px-4 mt-2">
             <CancelSavingsButton
               accountId={account.accountId}

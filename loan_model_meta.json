@@ -1,0 +1,46 @@
+{
+  "features": [
+    "loan_amnt",
+    "term",
+    "int_rate",
+    "emp_length",
+    "home_ownership",
+    "annual_inc",
+    "purpose",
+    "dti",
+    "delinq_2yrs",
+    "inq_last_6mths",
+    "open_acc",
+    "pub_rec",
+    "revol_util",
+    "total_acc",
+    "fico_avg"
+  ],
+  "threshold": 0.4962182939052582,
+  "category_maps": {
+    "home_ownership": {
+      "ANY": 0,
+      "MORTGAGE": 1,
+      "NONE": 2,
+      "OTHER": 3,
+      "OWN": 4,
+      "RENT": 5
+    },
+    "purpose": {
+      "car": 0,
+      "credit_card": 1,
+      "debt_consolidation": 2,
+      "educational": 3,
+      "home_improvement": 4,
+      "house": 5,
+      "major_purchase": 6,
+      "medical": 7,
+      "moving": 8,
+      "other": 9,
+      "renewable_energy": 10,
+      "small_business": 11,
+      "vacation": 12,
+      "wedding": 13
+    }
+  }
+}

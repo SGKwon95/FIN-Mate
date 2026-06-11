@@ -230,63 +230,117 @@ rag_cache
 
 ```mermaid
 flowchart TD
-    A[사용자 질문 입력\nChatInterface.tsx] -->|POST /api/chat| B
+    A["사용자 질문 입력\nChatInterface.tsx\n(useChat 훅 → POST /api/chat)"] --> B
 
     subgraph ROUTE ["app/api/chat/route.ts"]
-        B[세션 인증\n문서 범위 결정\ndocCategory / docNames] --> C
+        B["① 세션 인증 (auth())\n역할 확인: isEmployee\n문서 범위 결정: docCategory / docNames"] --> C
 
         C{수동 컨텍스트\nretrievedContext?}
-        C -->|Yes| MANUAL[수동 컨텍스트 사용\n직원 화면 파일 업로드]
+        C -->|Yes| MANUAL["수동 컨텍스트 사용\n(직원 화면 파일 업로드 HTML)"]
         C -->|No| D
 
-        D{캐시 1단계\nExact Match}
-        D -->|"lookupExact()\nSHA256 키 일치"| HIT1["즉시 응답\n캐시 hitCount+1"]
-        D -->|Miss| E
+        D["② 캐시 키 생성\nnormalizeQuestion → SHA-256\nbuildDocScope(docCategory, docNames)"]
+        D --> E
 
-        E["embedOne(질문)\n→ 768-dim 벡터"]
-        E --> F
+        E{캐시 1단계\nExact Match\nlib/rag-cache.ts}
+        E -->|"lookupExact(cacheKey)\nrag_cache 테이블 SHA-256 일치"| HIT1["즉시 스트림 응답\nhitCount + 1\nX-Cache: HIT"]
+        E -->|Miss| F
 
-        F{캐시 2단계\nSemantic Match}
-        F -->|"lookupSemantic()\n코사인 유사도 ≥ 0.95"| HIT2["즉시 응답\n캐시 hitCount+1"]
-        F -->|Miss| G
+        F["③ 쿼리 재작성 (lib/query-rewrite.ts)\n30자 이하 단어·구문만 대상\nLLM 호출 → 검색 최적화 문장\n한자·일본어 감지 시 원문 폴백"]
+        F --> G
 
-        G["retrieveChunks()\nlib/rag.ts\npgvector 코사인 유사도 검색\n유사도 ≥ 0.3, Top-5\n정렬: 유사도 / quality_score"]
+        G["④ embedOne(검색 쿼리)\n→ 768-dim 벡터\n(LM Studio 임베딩 모델)"]
         G --> H
 
-        MANUAL & H --> I
+        H{캐시 2단계\nSemantic Match\nlib/rag-cache.ts}
+        H -->|"lookupSemantic(queryVec)\npgvector 코사인 유사도 ≥ 0.95"| HIT2["즉시 스트림 응답\nhitCount + 1\nX-Cache: HIT"]
+        H -->|Miss| I
 
-        I["chunksToContext()\n청크 → 마크다운 형식\n[1] (제5조 ③항) 내용..."]
-        I --> J
+        I{"⑤ 문서 범위 필터\n(비직원 전용)"}
+        I -->|"emp-* 청크 제외\n고객용 문서 없으면 skipRag"| J
+        I -->|직원| J
 
-        J{시스템 프롬프트\n결정}
-        J -->|상품목록 요청\n직원 전용| P1[DB 상품 목록\n마크다운 테이블]
-        J -->|RAG 컨텍스트 있음| P2[문서 기반 답변\n조항 인용 필수\n수치 정확성 강조]
-        J -->|컨텍스트 없음| P3[일반 금융 AI\n어시스턴트]
+        J["⑥ retrieveChunks() — lib/rag.ts\npgvector 코사인 유사도 검색\n유사도 ≥ 0.3, Top-5\n정렬: distance / quality_score\n0건 시 임계값 0.15로 재시도"]
+        J --> K
 
-        P1 & P2 & P3 --> K
+        MANUAL & K --> L
 
-        K["streamText()\nLM Studio OpenAI 호환 API\ntemperature: 0.05\n스트리밍 응답"]
-        K --> L[ChatFeedback 레코드 생성\nfeedback: null 초기값\nchunkIds 저장]
+        L["⑦ 컨텍스트 우선순위 결정\n1순위: 직원 상품목록 DB 조회\n2순위: 수동 컨텍스트\n3순위: RAG 청크 (chunksToContext)\n4순위: 없음"]
         L --> M
 
-        M{RAG 컨텍스트 사용?}
-        M -->|Yes| N["saveCache()\nRAG 캐시 저장\nFire-and-Forget"]
-        M -->|Yes| O["evaluateRag()\nPhoenix로 평가 전송\ncontextRelevance·faithfulness\nFire-and-Forget"]
-        M -->|No| DONE
-        N & O --> DONE
+        M{"⑧ 시스템 프롬프트 선택\n(역할 × 컨텍스트 종류)"}
+        M -->|"직원 + 상품목록 요청"| P1["직원 상품목록 프롬프트\nDB 테이블 그대로 출력"]
+        M -->|"직원 + RAG 컨텍스트"| P2["직원 업무문서 프롬프트\n출처 명시·수치 정확성 강조"]
+        M -->|"고객 + RAG 컨텍스트"| P3["고객 약관 프롬프트\n조항 인용 필수\n금융소비자보호법 준수"]
+        M -->|"컨텍스트 없음"| P4["일반 금융 AI 어시스턴트\n추측 금지·빈 응답 금지"]
+
+        P1 & P2 & P3 & P4 --> N
+
+        N["⑨ ChatFeedback 레코드 생성\nchunkIds 저장 (피드백용)\nfeedback: null 초기값"]
+        N --> O
+
+        O["⑩ streamText() — LM Studio\nOpenAI 호환 API\ntemperature: 0.05\nOTel 스팬: kind=LLM, model, input"]
+        O --> RESP
+
+        RESP["스트리밍 응답 반환\nX-Feedback-Id, X-Cache: MISS"]
     end
 
-    DONE[스트리밍 응답 반환] --> A
+    RESP --> A
+
+    subgraph ASYNC ["스트리밍 완료 후 — Fire-and-Forget"]
+        FA["saveCache()\nrag_cache 저장\ncacheKey + queryEmbedding\n(RAG 컨텍스트 사용 시에만)"]
+        FB["evaluateRag()\nLLM으로 3가지 평가\n→ Phoenix span annotation\ncontextRelevance · faithfulness · answerRelevance"]
+        FC["LangSmith traceable()\n질문·모델·컨텍스트 크기·청크 수"]
+        FD["OTel span\noutput.value · status=OK"]
+    end
+
+    O -.->|완료 후| FA & FB & FC & FD
 
     style ROUTE fill:#f0f8ff,stroke:#4080ff
+    style ASYNC fill:#fff8e8,stroke:#f0a000
 ```
 
 **컨텍스트 우선순위**
+
 ```
-① 직원 상품 목록 DB 조회 결과
-② 수동 컨텍스트 (ChatInterface 파일 업로드)
-③ RAG 벡터 검색 결과 (document_chunks)
-④ 없음 (일반 대화)
+① 직원 상품목록 DB 조회 결과  — isEmployee && /상품목록/ 패턴 매칭
+② 수동 컨텍스트              — ChatInterface 파일 업로드 HTML (MinIO)
+③ RAG 벡터 검색 결과         — document_chunks pgvector Top-5
+④ 없음                       — 일반 금융 대화
+```
+
+**캐시 2단계 구조**
+
+```
+질문 정규화 → SHA-256 해시 → [Exact Match] → 즉시 응답
+                  ↓ Miss
+embedOne(쿼리 재작성된 질문) → [Semantic Match, 유사도 ≥ 0.95] → 즉시 응답
+                  ↓ Miss
+pgvector 검색 → LLM 생성 → 응답 후 캐시 저장
+```
+
+**쿼리 재작성 조건** (`lib/query-rewrite.ts`)
+
+```
+입력이 30자 이하 AND 한국어 조사 없음  →  LLM 호출로 서술형 질문 변환
+입력이 30자 초과 OR 조사 포함          →  원문 그대로 사용 (LLM 호출 생략)
+재작성 결과에 한자·일본어 포함         →  원문 폴백
+```
+
+**벡터 검색 랭킹 기준** (`lib/rag.ts`)
+
+```sql
+ORDER BY (embedding <=> queryVec) / NULLIF(quality_score, 0)
+-- 피드백 👍 → quality_score +0.1 → 거리값 감소 → 순위 ↑
+-- 피드백 👎 → quality_score -0.1 → 거리값 증가 → 순위 ↓
+```
+
+**고객/직원 문서 분리 정책**
+
+```
+고객 채팅 → emp-* 접두 청크 제외 (직원 업로드 문서 오염 방지)
+직원 채팅 → docCategory 지정 시 해당 카테고리 문서만 검색
+           → 미지정 시 전체 employee 업로드 문서 범위
 ```
 
 ---

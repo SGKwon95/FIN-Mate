@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react'
 import { useRef, useEffect, useState } from 'react'
-import { Send, Bot, User, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Send, Bot, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
@@ -13,10 +13,12 @@ export default function ChatInterface({
   onClose,
   initialContext,
   docCategory,
+  productId,
 }: {
   onClose?: () => void
   initialContext?: string
   docCategory?: 'all' | 'banking' | 'product'
+  productId?: string
 } = {}) {
   const [models, setModels] = useState<Model[]>([])
   const [modelId, setModelId] = useState('')
@@ -42,33 +44,37 @@ export default function ChatInterface({
     if (initialContext) setRetrievedContext(initialContext)
   }, [initialContext])
 
-  // modelId와 context가 준비되면 추천 질문 생성
-  useEffect(() => {
+  function fetchSuggestions(conversationMessages?: { role: string; content: string }[]) {
     if (!modelId) return
     setSuggestions([])
     fetch('/api/chat/suggestions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ context: initialContext ?? '', modelId }),
+      body: JSON.stringify({
+        context: initialContext ?? '',
+        modelId,
+        docCategory,
+        messages: conversationMessages ?? [],
+      }),
     })
       .then(r => r.json())
       .then(({ questions }) => { if (Array.isArray(questions)) setSuggestions(questions) })
       .catch(() => {})
-  }, [modelId, initialContext])
+  }
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const { messages, input, handleInputChange, handleSubmit, append, isLoading, error } = useChat({
     api: '/api/chat',
-    body: { modelId, retrievedContext, docCategory },
+    body: { modelId, retrievedContext, docCategory, productId },
     streamProtocol: 'text',
     onResponse: (response) => {
       const fid = response.headers.get('X-Feedback-Id')
       if (fid) pendingFeedbackIdRef.current = fid
       pendingCacheHitRef.current = response.headers.get('X-Cache') === 'HIT'
     },
-    onFinish: (message) => {
+    onFinish: (message, { finishReason }) => {
       const fid = pendingFeedbackIdRef.current
       if (fid && message.id) {
         setFeedbackMap(prev => ({ ...prev, [message.id]: fid }))
@@ -77,6 +83,10 @@ export default function ChatInterface({
       if (pendingCacheHitRef.current && message.id) {
         setCacheHitMap(prev => ({ ...prev, [message.id]: true }))
         pendingCacheHitRef.current = false
+      }
+      if (finishReason === 'stop' || finishReason === 'length') {
+        // messages 상태는 onFinish 시점에 아직 갱신 전이므로 직전 대화 + 현재 응답으로 구성
+        fetchSuggestions([...messages, { role: 'assistant' as const, content: message.content }])
       }
     },
   })
@@ -110,7 +120,7 @@ export default function ChatInterface({
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (!isLoading && input.trim()) {
+      if (!isLoading && input.trim() && modelId) {
         handleSubmit(e as unknown as React.FormEvent)
       }
     }
@@ -133,7 +143,7 @@ export default function ChatInterface({
             onChange={(e) => setModelId(e.target.value)}
             className="text-sm border border-kb-gray-border rounded-lg px-2.5 py-1.5 bg-kb-gray-light text-kb-navy focus:outline-none focus:ring-2 focus:ring-kb-yellow cursor-pointer font-medium max-w-[140px]"
           >
-            {models.length === 0 && <option value="">모델 로딩 중…</option>}
+            {models.length === 0 && <option value="">LM Studio 미연결</option>}
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
@@ -164,23 +174,10 @@ export default function ChatInterface({
                 {onClose ? '상품에 관해 질문해보세요.' : '궁금한 금융 상품에 대해 질문해보세요.'}
               </p>
             </div>
-            {suggestions.length > 0 && (
-              <div className="w-full max-w-xs flex flex-col gap-2">
-                {suggestions.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => !isLoading && append({ role: 'user', content: q })}
-                    className="text-left text-xs px-3.5 py-2.5 rounded-xl border border-kb-gray-border bg-white text-kb-navy hover:bg-kb-gray-light active:scale-[0.98] transition-all leading-snug"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
-        {messages.map((m) => (
+        {messages.filter(m => m.role !== 'assistant' || !!m.content?.trim()).map((m) => (
           <div
             key={m.id}
             className={cn('flex gap-2.5', m.role === 'user' ? 'justify-end' : 'justify-start')}
@@ -207,6 +204,9 @@ export default function ChatInterface({
                     </svg>
                     캐시 응답
                   </span>
+                )}
+                {!m.content && !(isLoading && m.id === messages.at(-1)?.id) && (
+                  <p className="text-kb-gray text-xs italic">모델이 응답하지 않았습니다. LM Studio에서 채팅 모델이 로드되어 있는지 확인해주세요.</p>
                 )}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -308,16 +308,11 @@ export default function ChatInterface({
               )}
             </div>
 
-            {m.role === 'user' && (
-              <div className="w-8 h-8 rounded-full bg-kb-yellow flex items-center justify-center shrink-0 mt-0.5">
-                <User className="w-4 h-4 text-kb-navy" />
-              </div>
-            )}
           </div>
         ))}
 
-        {/* 로딩 인디케이터 */}
-        {isLoading && (
+        {/* 로딩 인디케이터 — 첫 토큰 도착 전(사용자 메시지가 마지막)에만 표시 */}
+        {isLoading && messages.at(-1)?.role === 'user' && (
           <div className="flex gap-2.5 justify-start">
             <div className="w-8 h-8 rounded-full bg-kb-navy flex items-center justify-center shrink-0">
               <Bot className="w-4 h-4 text-kb-yellow" />
@@ -345,6 +340,20 @@ export default function ChatInterface({
 
       {/* ── 하단 입력바 ───────────────────────────────── */}
       <div className="bg-white border-t border-kb-gray-border px-4 py-3 shrink-0">
+        {messages.length > 0 && !isLoading && suggestions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2.5">
+            {suggestions.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => append({ role: 'user', content: q })}
+                className="text-left text-xs px-3 py-1.5 rounded-lg border border-kb-gray-border bg-kb-gray-light text-kb-navy hover:bg-kb-yellow/10 hover:border-kb-yellow active:scale-[0.98] transition-all leading-snug"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
@@ -357,7 +366,7 @@ export default function ChatInterface({
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || !input.trim() || !modelId}
             className="w-10 h-10 rounded-xl bg-kb-navy text-white flex items-center justify-center shrink-0 hover:bg-kb-navy-light disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             aria-label="전송"
           >

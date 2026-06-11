@@ -13,9 +13,11 @@ function htmlToText(html: string): string {
 export default function ChatPopup({
   contextUrls = [],
   productContext = "",
+  productId,
 }: {
   contextUrls?: string[]
   productContext?: string  // 서버 컴포넌트에서 직렬화한 상품 메타데이터
+  productId?: string
 }) {
   const [open, setOpen] = useState(false)
   const [context, setContext] = useState("")
@@ -65,6 +67,7 @@ export default function ChatPopup({
             <ChatInterface
               onClose={() => setOpen(false)}
               initialContext={context}
+              productId={productId}
             />
           </div>
         </>

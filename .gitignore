@@ -48,3 +48,6 @@ data/*.db-shm
 
 # llm model
 *.gguf
+
+# python
+__pycache__

@@ -29,7 +29,7 @@ export default function IdleTimeout() {
       if (secs <= 0 && !signedOut.current) {
         signedOut.current = true
         clearInterval(tick)
-        signOut({ callbackUrl: '/login' })
+        signOut({ redirectTo: `${window.location.origin}/login` })
         return
       }
       setRemaining(Math.max(0, secs))

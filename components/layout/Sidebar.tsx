@@ -70,7 +70,6 @@ const NAV_ITEMS: NavItem[] = [
       { href: "/recommend",        icon: Sparkles,  label: "맞춤추천" },
     ],
   },
-  { href: "/settings", icon: Settings, label: "설정" },
 ];
 
 export default function Sidebar() {

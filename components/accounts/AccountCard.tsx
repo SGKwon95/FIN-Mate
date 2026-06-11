@@ -82,13 +82,7 @@ export default function AccountCard({
       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-kb-gray-border text-xs text-kb-gray">
         <span>개설일 {openedDate}</span>
         {lastTransactionAt && (
-          <span>
-            최근거래{" "}
-            {new Date(lastTransactionAt).toLocaleDateString("ko-KR", {
-              month: "2-digit",
-              day: "2-digit",
-            })}
-          </span>
+          <span>최근거래 {new Date(lastTransactionAt).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" })}</span>
         )}
       </div>
     </Link>

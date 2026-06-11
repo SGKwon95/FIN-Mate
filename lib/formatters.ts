@@ -47,6 +47,17 @@ export function formatDate(date: string | Date): string {
   })
 }
 
+/** 날짜+시간 → 06. 10. 18:42 */
+export function formatDateTime(date: string | Date): string {
+  return new Date(date).toLocaleDateString("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Seoul",
+  })
+}
+
 /** 거래 유형 한글 */
 export const TX_TYPE_LABEL: Record<string, string> = {
   DEPOSIT: "입금",
