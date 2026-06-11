@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import Link from "next/link"
-import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X, ShieldCheck } from "lucide-react"
+import { LogOut, Star, MessageSquare, ClipboardList, UserRound, X, ShieldCheck, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { switchToCustomer } from "@/app/(main)/switch-role-action"
 
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/chat",           label: "AI 상담",     icon: MessageSquare },
   { href: "/loan-review",    label: "대출 심사",   icon: ClipboardList },
   { href: "/account-limits", label: "고객계좌관리", icon: ShieldCheck },
+  { href: "/ai-admin",       label: "AI 관리",     icon: BarChart3 },
 ]
 
 export default function EmployeeHeader({ isAlsoCustomer = false }: { isAlsoCustomer?: boolean }) {

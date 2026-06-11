@@ -11,7 +11,7 @@ const CUSTOMER_ONLY = [
   "/analysis", "/recommend",
 ]
 // 직원 전용 경로 — 고객 접근 차단
-const EMPLOYEE_ONLY = ["/chat", "/loan-review"]
+const EMPLOYEE_ONLY = ["/chat", "/loan-review", "/ai-admin"]
 
 export default auth(function proxy(req) {
   const isLoggedIn = !!req.auth
