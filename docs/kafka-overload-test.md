@@ -154,6 +154,35 @@ docker exec -it postgres psql -U postgres fin-mate -c \
 
 ---
 
+### Scenario D: 컨슈머 리밸런싱 (Scale-up / Scale-down / Rebalance)
+
+**관찰 포인트**: 컨슈머 인스턴스 수가 바뀔 때마다 파티션이 재분배(`rebalance`)된다. 리밸런스 중 짧은 stop-the-world가 발생하지만 HTTP 레이어는 정상 처리돼야 한다. 컨슈머 0개 구간(lag 급증)에서 Kafka 메시지 유실 없이 재기동 후 drain되는지 확인.
+
+```bash
+# [터미널 3] lag 실시간 모니터링 (Pi에서)
+bash scripts/load-test/watch-lag.sh
+
+# [터미널 4] k6 실행 (총 ~9분 30초)
+k6 run -e BASE_URL=$BASE_URL -e FROM_ACCOUNT_ID=$FROM_ACCOUNT_ID \
+  -e SCENARIO=rebalancing scripts/load-test/k6-overload.js
+
+# k6 시작 후 1:00 — consumer 2번째 인스턴스 추가 (rebalance #1)
+npm run kafka:settlement &
+
+# k6 시작 후 3:00 — consumer 1번 kill (rebalance #2)
+pkill -f "kafka:settlement"
+
+# k6 시작 후 5:00 — consumer 2번도 kill → 컨슈머 0개, lag 급증 시작
+pkill -f "kafka:settlement"
+
+# k6 시작 후 7:00 — consumer 재기동 (rebalance #3 + lag drain)
+npm run kafka:settlement
+```
+
+**기록할 수치**: rebalance 1·2·3 각 구간 에러율 스파이크 지속 시간, 컨슈머 0개 구간 최대 lag, 재기동 후 lag 0 복귀 시간, 전체 구간 p(95).
+
+---
+
 ## 실행 순서 요약
 
 1. 토픽 재생성 확인 (`PartitionCount:3, RF:3`)
