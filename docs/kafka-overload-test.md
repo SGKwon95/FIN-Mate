@@ -85,101 +85,140 @@ export FROM_ACCOUNT_ID=9c7a7f9f-3ab9-4198-bb9d-a63055c656f1
 
 ---
 
-### Scenario A: 컨슈머 과부하 (Consumer Kill & Recovery)
+### 시나리오 A: 정산 처리 워커 강제 종료 후 자동 복구
 
-**관찰 포인트**: `session.timeout.ms=30s` → kill 후 30초 뒤 리밸런스. `fromBeginning: false` → 재시작 후 lag 전량 재처리.
+**무엇을 확인하는가**
+타행 이체 요청을 처리하는 정산 워커(settlement-consumer)를 테스트 도중 강제로 종료했을 때 시스템이 어떻게 반응하는지 확인한다.
+Kafka는 워커가 30초간 응답이 없으면 해당 워커가 처리하던 메시지 대기열(파티션)을 살아있는 워커에게 자동으로 넘긴다. 워커를 재시작하면 종료되어 있던 동안 쌓인 미처리 메시지를 순서대로 모두 소화(drain)한다.
+핵심 질문: **워커가 죽어있는 동안에도 사용자 이체 요청은 정상 접수되는가?**
 
 ```bash
-# [터미널 3] lag 실시간 모니터링 (Pi에서)
+# [터미널 3] 미처리 메시지 적체량(lag) 실시간 모니터링 (Pi에서)
 bash scripts/load-test/watch-lag.sh
 
-# [터미널 4] k6 실행
+# [터미널 4] 부하 테스트 시작 (가상 사용자 200명이 이체 요청 반복)
 k6 run -e BASE_URL=$BASE_URL -e FROM_ACCOUNT_ID=$FROM_ACCOUNT_ID \
   -e SCENARIO=consumer-lag scripts/load-test/k6-overload.js
 
-# k6 시작 후 ~1분 30초 뒤 — settlement-consumer 강제 종료
+# 부하 테스트 시작 후 약 1분 30초 뒤 — 정산 워커 강제 종료
 pkill -f "kafka:settlement"
 
-# ~4분 후 — 워커 재시작 (lag drain 관찰)
+# 약 4분 뒤 — 정산 워커 재시작 (적체된 메시지 소화 시작)
 npm run kafka:settlement
 ```
 
-**기록할 수치**: 최대 Consumer Lag 수치, kill 후 HTTP 에러율, 재시작 후 lag 0 복귀 시간.
+**기록할 수치**
+
+| 항목 | 의미 |
+|---|---|
+| 최대 메시지 적체량(lag) | 워커가 죽어있는 동안 얼마나 많은 이체 요청이 쌓였는가 |
+| 워커 종료 직후 HTTP 에러율 | 사용자 요청 자체가 실패했는가, 아니면 접수만 지연됐는가 |
+| 재시작 후 적체 해소 시간 | 워커가 살아나고 나서 밀린 요청을 모두 처리하는 데 걸린 시간 |
 
 ---
 
-### Scenario B: 브로커 장애 내성 (1-broker Down)
+### 시나리오 B: Kafka 서버(브로커) 1대 다운 후 자동 복구
 
-**관찰 포인트**: `acks: all` + `retry.initialRetryTime: 3000, retries: 60` → 브로커 다운 중 재시도. k6 `10s timeout`으로 HTTP 실패가 발생하더라도 Kafka 내부에서는 재시도 진행 중일 수 있음.
+**무엇을 확인하는가**
+Kafka 메시지 서버(브로커) 3대 중 1대를 의도적으로 중지했을 때 시스템이 나머지 2대로 자동 전환되는지 확인한다.
+FIN-Mate는 메시지를 발행할 때 `acks: all` 설정으로 모든 복제본에 기록이 완료돼야 성공으로 처리한다. 서버 1대가 꺼지는 순간 Kafka 내부에서 리더 재선출이 일어나며, 이 짧은 전환 시간 동안 일부 이체 요청이 재시도된다. 최대 60회, 3초 간격으로 재시도하므로 약 3분간은 자동으로 버텨낸다.
+핵심 질문: **서버 1대가 죽어도 이체 요청이 유실 없이 처리되는가?**
 
 ```bash
-# [터미널 3] 브로커 상태 모니터링 (Pi에서)
+# [터미널 3] Kafka 서버 3대의 리더 상태 모니터링 (Pi에서, 3초 간격 갱신)
 watch -n 3 'docker exec kafka /opt/kafka/bin/kafka-metadata-quorum.sh \
   --bootstrap-server 192.168.219.110:9092 describe --status 2>/dev/null | head -10'
 
-# [터미널 4] k6 실행
+# [터미널 4] 부하 테스트 시작 (가상 사용자 150명이 이체 요청 반복)
 k6 run -e BASE_URL=$BASE_URL -e FROM_ACCOUNT_ID=$FROM_ACCOUNT_ID \
   -e SCENARIO=broker-failure scripts/load-test/k6-overload.js
 
-# k6 시작 후 2분 뒤 — Naver Cloud 1번 브로커 중지
+# 부하 테스트 시작 후 2분 뒤 — Naver Cloud에 있는 Kafka 서버 1번 중지
 ssh user@49.50.135.166 "docker stop kafka"
 
-# k6 종료 1분 전 — 브로커 재시작
+# 부하 테스트 종료 1분 전 — 서버 재시작 (3대 완전 복구 확인)
 ssh user@49.50.135.166 "docker start kafka"
 ```
 
-**기록할 수치**: 브로커 다운 직후 에러율 스파이크, 2-broker 안정 운영 구간 에러율, 재시작 후 복귀 시간.
+**기록할 수치**
+
+| 항목 | 의미 |
+|---|---|
+| 서버 다운 직후 에러율 스파이크 | 리더 재선출이 완료되기 전 순간 에러가 몇 초간 발생하는가 |
+| 2대 운영 구간 에러율 | 서버 1대 없이 안정적으로 운영되는 구간의 에러율 |
+| 서버 재시작 후 3대 복구 시간 | 다운된 서버가 돌아와 정상 참여하기까지 걸리는 시간 |
 
 ---
 
-### Scenario C: 최대 TPS (Producer Flood)
+### 시나리오 C: 최대 동시 접속자 처리량 한계 측정
 
-**관찰 포인트**: DB 행 락이 진짜 병목. `max.poll.interval.ms=5분` 초과로 settlement-consumer 리밸런스 발생 여부. 500 VU에서 lag이 얼마나 쌓이는지.
+**무엇을 확인하는가**
+가상 사용자 수를 100명 → 300명 → 500명으로 단계적으로 올리면서 시스템이 어느 지점에서 한계에 도달하는지 측정한다.
+예상되는 실제 병목은 Kafka 자체가 아니라 **데이터베이스의 행 잠금(Row Lock)** 이다. 이체 요청이 몰리면 같은 계좌 잔액을 동시에 수정하려는 요청들이 서로 순서를 기다리게 되고, 이 대기 시간이 전체 처리 속도를 제한한다.
+핵심 질문: **동시 사용자 500명 환경에서 이체 요청이 몇 건/초 처리되는가? 한 건의 요청이 완료되기까지 p95 기준 얼마나 걸리는가?**
 
 ```bash
-# [터미널 3] lag 모니터링
+# [터미널 3] 미처리 메시지 적체량 모니터링
 bash scripts/load-test/watch-lag.sh
 
-# [터미널 4] k6 실행
+# [터미널 4] 부하 테스트 시작 (100명 → 300명 → 500명 단계적 증가)
 k6 run -e BASE_URL=$BASE_URL -e FROM_ACCOUNT_ID=$FROM_ACCOUNT_ID \
   -e SCENARIO=max-tps scripts/load-test/k6-overload.js
 
-# [테스트 완료 후] DB 커밋 건수 vs k6 성공 건수 비교
+# 테스트 완료 후 — DB에 실제로 기록된 이체 건수 확인
 docker exec -it postgres psql -U postgres fin-mate -c \
   "SELECT transaction_status, count(*) FROM transaction \
    WHERE memo='overload-max-tps' GROUP BY 1;"
 ```
 
-**기록할 수치**: VU 단계별(100/300/500) 처리량, p(95), 에러율, 최대 lag, DB PENDING/COMPLETED 건수 차이.
+**기록할 수치**
+
+| 항목 | 의미 |
+|---|---|
+| 단계별(100/300/500명) 처리량 | 동시 사용자 수에 따른 초당 처리 건수 변화 |
+| p95 응답시간 | 전체 요청 중 상위 5%를 제외한 최대 응답 시간 (체감 최악 속도) |
+| 단계별 에러율 | 사용자가 실제로 오류를 만나는 비율 |
+| 최대 메시지 적체량 | 500명 구간에서 정산 워커가 처리하지 못하고 쌓이는 최대 메시지 수 |
+| DB 처리 건수 불일치 | 부하 테스트가 기록한 성공 건수와 DB에 실제 저장된 건수의 차이 |
 
 ---
 
-### Scenario D: 컨슈머 리밸런싱 (Scale-up / Scale-down / Rebalance)
+### 시나리오 D: 정산 워커 증설·축소 시 부하 재분배
 
-**관찰 포인트**: 컨슈머 인스턴스 수가 바뀔 때마다 파티션이 재분배(`rebalance`)된다. 리밸런스 중 짧은 stop-the-world가 발생하지만 HTTP 레이어는 정상 처리돼야 한다. 컨슈머 0개 구간(lag 급증)에서 Kafka 메시지 유실 없이 재기동 후 drain되는지 확인.
+**무엇을 확인하는가**
+정산 워커(settlement-consumer)의 수를 테스트 도중 1개 → 2개 → 0개 → 1개로 바꾸면서 각 전환 시점에 시스템이 안정적으로 부하를 재분배하는지 확인한다.
+워커 수가 바뀔 때마다 Kafka는 메시지 대기열(파티션) 담당을 자동으로 재배치(리밸런스)한다. 이 재배치는 짧은 순간 처리를 멈추지만 곧 재개된다. 워커가 0개인 구간에서는 메시지가 쌓이기만 하고, 워커가 재시작되면 쌓인 메시지를 모두 순서대로 소화한다.
+핵심 질문: **워커 수가 바뀌는 전환 시점마다 사용자에게 오류가 노출되는가? 워커가 완전히 없는 구간에서 메시지 유실은 발생하는가?**
 
 ```bash
-# [터미널 3] lag 실시간 모니터링 (Pi에서)
+# [터미널 3] 미처리 메시지 적체량 실시간 모니터링 (Pi에서)
 bash scripts/load-test/watch-lag.sh
 
-# [터미널 4] k6 실행 (총 ~9분 30초)
+# [터미널 4] 부하 테스트 시작 (가상 사용자 100명 고정, 총 약 9분 30초)
 k6 run -e BASE_URL=$BASE_URL -e FROM_ACCOUNT_ID=$FROM_ACCOUNT_ID \
   -e SCENARIO=rebalancing scripts/load-test/k6-overload.js
 
-# k6 시작 후 1:00 — consumer 2번째 인스턴스 추가 (rebalance #1)
+# 테스트 시작 후 1분 — 정산 워커 1개 추가 (워커 2개 운영, 부하 재배치 #1)
 npm run kafka:settlement &
 
-# k6 시작 후 3:00 — consumer 1번 kill (rebalance #2)
+# 테스트 시작 후 3분 — 워커 1번 종료 (워커 1개 운영, 부하 재배치 #2)
 pkill -f "kafka:settlement"
 
-# k6 시작 후 5:00 — consumer 2번도 kill → 컨슈머 0개, lag 급증 시작
+# 테스트 시작 후 5분 — 워커 2번도 종료 (워커 0개, 메시지 적체 시작)
 pkill -f "kafka:settlement"
 
-# k6 시작 후 7:00 — consumer 재기동 (rebalance #3 + lag drain)
+# 테스트 시작 후 7분 — 워커 재시작 (적체된 메시지 소화 시작, 부하 재배치 #3)
 npm run kafka:settlement
 ```
 
-**기록할 수치**: rebalance 1·2·3 각 구간 에러율 스파이크 지속 시간, 컨슈머 0개 구간 최대 lag, 재기동 후 lag 0 복귀 시간, 전체 구간 p(95).
+**기록할 수치**
+
+| 항목 | 의미 |
+|---|---|
+| 재배치 #1·#2·#3 각 구간 에러율 | 워커 수가 바뀌는 전환 시점마다 오류가 발생하는 시간과 비율 |
+| 워커 0개 구간 최대 적체량 | 워커가 없는 2분 동안 최대 몇 건의 메시지가 쌓이는가 |
+| 워커 재시작 후 적체 해소 시간 | 재시작 이후 밀린 메시지를 모두 처리하기까지 걸리는 시간 |
+| 전체 구간 p95 응답시간 | 전환 구간 포함 전체 테스트의 체감 최악 응답 속도 |
 
 ---
 
