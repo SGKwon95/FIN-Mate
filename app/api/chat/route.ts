@@ -2,7 +2,7 @@ import { streamText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { logger } from '@/lib/logger'
 import { traceable } from 'langsmith/traceable'
-import { retrieveChunks, chunksToContext, type RetrievedChunk } from '@/lib/rag'
+import { retrieveChunksHybrid, chunksToContext, type RetrievedChunk } from '@/lib/rag'
 import { embedOne } from '@/lib/embeddings'
 import { rewriteQuery } from '@/lib/query-rewrite'
 import {
@@ -442,10 +442,10 @@ export async function POST(req: Request) {
         }
 
         if (!skipRag) {
-          ragChunks = await retrieveChunks(queryVec, {
+          ragChunks = await retrieveChunksHybrid(searchQuery, queryVec, {
             topK: 5,
             docNames: ragDocNames,
-            minSimilarity: 0.3,
+            minSimilarity: 0.2,
           })
         }
         finalContext = chunksToContext(ragChunks)

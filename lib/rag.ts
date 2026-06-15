@@ -197,6 +197,101 @@ export function chunksToContext(chunks: RetrievedChunk[]): string {
     .join('\n\n---\n\n')
 }
 
+// ── Hybrid Search (BM25 + Vector, RRF 융합) ──────────────────
+//
+// 1. Vector search  — pgvector 코사인 유사도 (의미 기반)
+// 2. BM25 근사      — PostgreSQL full-text search, 'simple' dictionary (한국어 공백 분리 호환)
+// 3. RRF 융합       — 두 랭킹을 Reciprocal Rank Fusion(k=60)으로 결합
+//
+// Vector-only 보다 키워드 강조 쿼리(예: "중도해지 이율", "최소 가입금액")에서 정확도 향상.
+// BM25 실패(빈 쿼리 등) 시 벡터 검색 결과로 폴백.
+
+export async function retrieveChunksHybrid(
+  query: string,
+  queryEmbedding: number[],
+  opts: { topK?: number; docNames?: string[]; minSimilarity?: number } = {},
+): Promise<RetrievedChunk[]> {
+  const { topK = 5, docNames, minSimilarity = 0.2 } = opts
+  const vec = `[${queryEmbedding.join(',')}]`
+  const RRF_K = 60
+  const N = Math.max(topK * 6, 30)
+
+  // 1) Vector search
+  const vectorRows: RetrievedChunk[] = docNames?.length
+    ? await prisma.$queryRaw<RetrievedChunk[]>`
+        SELECT id, content, doc_name AS "docName", article_num AS "articleNum",
+               section_num AS "sectionNum", metadata,
+               1 - (embedding <=> ${vec}::vector) AS similarity
+        FROM document_chunks
+        WHERE doc_name = ANY(${docNames}::text[])
+          AND 1 - (embedding <=> ${vec}::vector) >= ${minSimilarity}
+        ORDER BY (embedding <=> ${vec}::vector) / NULLIF(quality_score, 0)
+        LIMIT ${N}
+      `
+    : await prisma.$queryRaw<RetrievedChunk[]>`
+        SELECT id, content, doc_name AS "docName", article_num AS "articleNum",
+               section_num AS "sectionNum", metadata,
+               1 - (embedding <=> ${vec}::vector) AS similarity
+        FROM document_chunks
+        WHERE 1 - (embedding <=> ${vec}::vector) >= ${minSimilarity}
+        ORDER BY (embedding <=> ${vec}::vector) / NULLIF(quality_score, 0)
+        LIMIT ${N}
+      `
+
+  // 2) BM25 (full-text, simple dictionary — 공백 분리, 한국어 호환)
+  type BM25Row = { id: string }
+  let bm25Rows: BM25Row[] = []
+  try {
+    bm25Rows = docNames?.length
+      ? await prisma.$queryRaw<BM25Row[]>`
+          SELECT id
+          FROM document_chunks
+          WHERE doc_name = ANY(${docNames}::text[])
+            AND to_tsvector('simple', content) @@ plainto_tsquery('simple', ${query})
+          ORDER BY ts_rank_cd(to_tsvector('simple', content), plainto_tsquery('simple', ${query})) DESC
+          LIMIT ${N}
+        `
+      : await prisma.$queryRaw<BM25Row[]>`
+          SELECT id
+          FROM document_chunks
+          WHERE to_tsvector('simple', content) @@ plainto_tsquery('simple', ${query})
+          ORDER BY ts_rank_cd(to_tsvector('simple', content), plainto_tsquery('simple', ${query})) DESC
+          LIMIT ${N}
+        `
+  } catch {
+    return vectorRows.slice(0, topK)
+  }
+
+  // 3) RRF 융합
+  const vectorRank = new Map(vectorRows.map((r, i) => [r.id, i + 1]))
+  const bm25Rank   = new Map(bm25Rows.map((r, i) => [r.id, i + 1]))
+  const allIds     = new Set([...vectorRows.map(r => r.id), ...bm25Rows.map(r => r.id)])
+  const vectorById = new Map(vectorRows.map(r => [r.id, r]))
+
+  // BM25 전용 결과는 청크 전체 데이터 별도 조회
+  const bm25OnlyIds = [...allIds].filter(id => !vectorRank.has(id))
+  if (bm25OnlyIds.length > 0) {
+    const extra = await prisma.$queryRaw<RetrievedChunk[]>`
+      SELECT id, content, doc_name AS "docName", article_num AS "articleNum",
+             section_num AS "sectionNum", metadata, 0::float AS similarity
+      FROM document_chunks
+      WHERE id = ANY(${bm25OnlyIds}::text[]::uuid[])
+    `
+    for (const c of extra) vectorById.set(c.id, c)
+  }
+
+  return [...allIds]
+    .map(id => ({
+      chunk:    vectorById.get(id)!,
+      rrfScore: 1 / (RRF_K + (vectorRank.get(id) ?? N + 1)) +
+                1 / (RRF_K + (bm25Rank.get(id)   ?? N + 1)),
+    }))
+    .filter(r => r.chunk)
+    .sort((a, b) => b.rrfScore - a.rrfScore)
+    .slice(0, topK)
+    .map(r => r.chunk)
+}
+
 export async function deleteChunks(docName: string): Promise<void> {
   await prisma.documentChunk.deleteMany({ where: { docName } })
 }
