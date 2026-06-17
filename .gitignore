@@ -51,3 +51,6 @@ data/*.db-shm
 
 # python
 __pycache__
+
+# logs
+logs
