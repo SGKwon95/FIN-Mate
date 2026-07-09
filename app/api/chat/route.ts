@@ -1,7 +1,6 @@
 import { streamText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { logger } from '@/lib/logger'
-import { traceable } from 'langsmith/traceable'
 import { retrieveChunksHybrid, chunksToContext, type RetrievedChunk } from '@/lib/rag'
 import { embedOne } from '@/lib/embeddings'
 import { rewriteQuery } from '@/lib/query-rewrite'
@@ -181,7 +180,7 @@ async function buildSingleProductContext(productId: string): Promise<string> {
         select: { benefitName: true, benefitRate: true, conditionDescription: true },
       },
       productFees: {
-        select: { feeName: true, feeAmount: true, feeRate: true, feeDescription: true },
+        select: { feeType: true, feeAmount: true, feeRate: true, waiverCondition: true },
       },
     },
   })
@@ -238,7 +237,7 @@ async function buildSingleProductContext(productId: string): Promise<string> {
 
   if (p.productFees.length > 0) {
     const fees = p.productFees
-      .map(f => `${f.feeName}: ${f.feeAmount ? Number(f.feeAmount).toLocaleString() + '원' : f.feeRate ? (Number(f.feeRate) * 100).toFixed(2) + '%' : ''} ${f.feeDescription ?? ''}`.trim())
+      .map(f => `${f.feeType}: ${f.feeAmount ? Number(f.feeAmount).toLocaleString() + '원' : f.feeRate ? (Number(f.feeRate) * 100).toFixed(2) + '%' : ''} ${f.waiverCondition ?? ''}`.trim())
       .join('\n  ')
     lines.push(`- 수수료:\n  ${fees}`)
   }
@@ -743,23 +742,6 @@ ${LANGUAGE_RULE}`
       logger.warn({ event: 'rag_eval_failed', err: String(err) }, 'RAG 평가 실패'),
     )
   }
-
-  // LangSmith 트레이스 (fire-and-forget)
-  const traceRun = traceable(
-    async (_input: { question: string; modelId: string; contextSize: number; ragChunks: number }) => {
-      const text = await result.text
-      return text
-    },
-    { name: 'fin-mate-rag-chat', run_type: 'llm' },
-  )
-  traceRun({
-    question: userQuestion,
-    modelId: modelId ?? 'local-model',
-    contextSize: finalContext ? Buffer.byteLength(finalContext, 'utf8') : 0,
-    ragChunks: ragChunkCount,
-  }).catch((err) =>
-    logger.warn({ event: 'langsmith_trace_failed', err: String(err) }, 'LangSmith 트레이스 실패'),
-  )
 
   // Phoenix output.value + status (스트림 완료 후)
   result.text
