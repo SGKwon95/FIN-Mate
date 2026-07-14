@@ -3,11 +3,10 @@
 Next.js 16 App Router 기반의 SG Star Banking 스타일 풀스택 금융 서비스 웹앱입니다.  
 Kafka 타행이체, ML 대출심사, RAG 채팅, LGTM 관측성 스택까지 포함한 포트폴리오 프로젝트입니다.
 
-## ERD
+## ERD 및 설계 문서
 
-![ERD](docs/erd.png)
-
-> 전체 테이블 목록: `party`, `individual`, `corporate`, `party_auth`, `branch`, `employee`, `product`, `deposit_detail`, `loan_detail`, `product_terms`, `product_rate`, `product_rate_tier`, `product_rate_benefit`, `product_fee`, `contract`, `contract_terms_agreement`, `contract_rate_benefit`, `account`, `transaction`, `transfer_instruction`, `kftc_receipt`, `savings_payment`, `scheduled_transfer`, `scheduled_transfer_execution`, `loan_application`, `loan_approval_step`, `loan_collateral`, `loan_delinquency`, `document`, `notification`, `common_code_group`, `common_code`
+[ERD 이미지](https://www.erdcloud.com/d/Be3k3fj5PAqZ3cvu6)
+[스프레드시트 링크](https://docs.google.com/spreadsheets/d/1tIi7CB2FVE8Y2MPfnZwHhe5HgwiIH48ggV7e40yNLUU/edit?usp=sharing)
 
 ---
 
@@ -352,12 +351,6 @@ Prometheus 텍스트 포맷. 주요 메트릭:
 | `fin_mate_kafka_messages_total` | Kafka 메시지 처리 수 |
 | `fin_mate_ml_inference_duration_seconds` | ML 추론 지연 |
 | `fin_mate_rag_context_bytes` | RAG 컨텍스트 크기 |
-
----
-
-## 일정표 및 RAW 데이터
-
-[스프레드시트 링크](https://docs.google.com/spreadsheets/d/1tIi7CB2FVE8Y2MPfnZwHhe5HgwiIH48ggV7e40yNLUU/edit?usp=sharing)
 
 ---
 
