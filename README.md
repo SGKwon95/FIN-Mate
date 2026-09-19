@@ -356,4 +356,4 @@ Prometheus 텍스트 포맷. 주요 메트릭:
 
 ## 접속 URL
 
-[SGBank](http://125.191.115.238:3000)
+[SGBank](https://sgbank.sgkwon.win)
