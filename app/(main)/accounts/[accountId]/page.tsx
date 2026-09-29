@@ -53,6 +53,8 @@ export default async function AccountDetailPage({ params, searchParams }: PagePr
     },
   })
 
+  if (!account) notFound()
+
   const isEmployee = session.user.isEmployee === true
   if (!isEmployee && account.partyId !== session.user.partyId) notFound()
 

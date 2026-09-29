@@ -579,9 +579,11 @@ export default function AiAdminClient({
                                   {evalKeys.map(k => {
                                     const v = t.evals[k]
                                     const { text, bg } = qualityStyle(v)
-                                    const label = k === 'context_relevance' ? '문맥 관련성'
+                                    const label = k === 'context_precision' ? '문맥 정밀도'
                                       : k === 'faithfulness' ? '충실도'
-                                      : k === 'answer_relevance' ? '답변 관련성' : k
+                                      : k === 'answer_relevancy' ? '답변 관련성'
+                                      : k === 'context_relevance' ? '문맥 관련성 (구)'
+                                      : k === 'answer_relevance' ? '답변 관련성 (구)' : k
                                     return (
                                       <div key={k} className={cn('px-3 py-1.5 rounded-xl text-xs font-medium', bg, text)}>
                                         {label}: {v.toFixed(2)}

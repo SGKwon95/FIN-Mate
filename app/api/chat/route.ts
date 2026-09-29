@@ -706,13 +706,13 @@ ${LANGUAGE_RULE}`
   // RAG 평가 → Phoenix 어노테이션 (fire-and-forget, RAG 컨텍스트 사용 시에만)
   if (contextSource === 'rag' && spanId && userQuestion && finalContext) {
     result.text.then(async (answer) => {
-      const evalResult = await evaluateRag(userQuestion, finalContext, answer, modelId ?? 'qwen2.5-14b-instruct')
+      const evalResult = await evaluateRag(userQuestion, finalContext, ragChunks, answer, modelId ?? 'qwen2.5-14b-instruct')
 
       const PHOENIX = process.env.PHOENIX_ENDPOINT ?? 'http://localhost:6006'
       const annotations = [
-        { name: 'context_relevance', score: evalResult.contextRelevance },
         { name: 'faithfulness',      score: evalResult.faithfulness },
-        { name: 'answer_relevance',  score: evalResult.answerRelevance },
+        { name: 'answer_relevancy',  score: evalResult.answerRelevancy },
+        { name: 'context_precision', score: evalResult.contextPrecision },
       ].map(({ name, score }) => ({
         span_id:        spanId,
         name,
@@ -734,9 +734,9 @@ ${LANGUAGE_RULE}`
       logger.info({
         event: 'rag_eval_annotated',
         spanId,
-        contextRelevance: evalResult.contextRelevance,
         faithfulness:     evalResult.faithfulness,
-        answerRelevance:  evalResult.answerRelevance,
+        answerRelevancy:  evalResult.answerRelevancy,
+        contextPrecision: evalResult.contextPrecision,
       }, 'Phoenix 어노테이션 전송 완료')
     }).catch((err) =>
       logger.warn({ event: 'rag_eval_failed', err: String(err) }, 'RAG 평가 실패'),

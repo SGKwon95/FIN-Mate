@@ -6,6 +6,14 @@
 `scripts/load-test/REPORT.md`에 정의된 A/B/C 3개 시나리오를 실제 실행하기 위한 계획.
 실행 전 **영향을 미치는 Kafka 설정값**을 파악해 테스트 결과 해석에 활용한다.
 
+> **2026-09-30 갱신**: 2026-06-09 커밋(`c46a884`, 배치 정산 전환)으로 `workers/settlement-consumer.ts`가
+> 삭제되고 `workers/settlement-batch.ts`(1일 1회 실행되는 단발성 배치)로 교체됨에 따라, 이 문서의 Part 1·2가
+> 가리키던 "정산 워커(settlement-consumer)"는 더 이상 존재하지 않는다. 현재 상시 실행되는 컨슈머는
+> **공동망 Gateway(`workers/interbank-gateway.ts`, group: `interbank-gateway-group`)** 이며, 아래 Part 1·2는
+> 이 워커를 기준으로 재작성했다. 최신 흐름 전체는 [`docs/kafka-interbank-transfer.md`](./kafka-interbank-transfer.md) 참고.
+> Part 3(실제 테스트 결과)은 배치 전환 **이전**(2026-06-04~05) 수치이므로 참고용으로만 남겨두고, 현재
+> 아키텍처 기준 재실행 결과가 아직 없다.
+
 ---
 
 ## Part 1. 프로젝트에 영향을 미치는 Kafka 설정값 분석
@@ -21,19 +29,29 @@
 | `delivery.timeout.ms` | `120000ms` (기본값) | **B** | k6 `timeout: 10s`와 불일치 주의. 브로커 다운 시 Kafka 재시도는 2분까지 시도하는데 k6는 10초에 HTTP 실패로 기록 → **에러율 수치 해석 시 고려** |
 | `idempotence` | 미설정 | **A·C** | DB 레벨 `transactionKey` 멱등성으로 충분. Kafka 레벨 idempotence는 추가 오버헤드. 변경 불필요 |
 
-### Consumer 설정
+### Consumer 설정 (대상: `interbank-gateway-group` — `workers/interbank-gateway.ts`)
+
+> 이전 버전 문서는 이 표가 `settlement-consumer`(삭제됨) 기준이었다. 지금 상시 실행되는 컨슈머는
+> 공동망 Gateway 하나뿐이므로 A·D 시나리오 모두 이 워커를 kill/재시작 대상으로 삼는다.
+> Gateway는 `TRANSFER_REQUESTS`, `B_RECEIVED_ACK`, `B_RESULTS`, `INBOUND_RESULTS` 4개 토픽을 동시에
+> 구독하므로, kill 시 요청 라우팅(Step1)과 정산 확정(Step7, `SETTLEMENT_PENDING` 기록) 두 지점 모두 지연된다.
 
 | 설정 | 현재 값 | 영향 시나리오 | 설명 |
 |---|---|---|---|
-| `fromBeginning` | `false` (명시 설정) | **A** | 워커 재시작 후 커밋된 offset부터 재개 → lag에 쌓인 메시지 전부 재처리. Scenario A의 복구 동작 핵심 |
-| `session.timeout.ms` | `30000ms` (KafkaJS 기본) | **A** | `pkill -f settlement-consumer` 직후 30초간은 브로커가 컨슈머를 살아있다고 판단 → 이 30초 동안 lag만 누적, 리밸런스 없음 |
-| `group.instance.id` | 미설정 (dynamic membership) | **A** | 워커 재시작 시마다 리밸런스 발생. static membership 설정 시 동일 ID로 재시작하면 즉시 파티션 복귀 → 복구 시간 단축 가능 (현재는 미적용) |
+| `fromBeginning` | `false` (명시 설정, `interbank-gateway.ts:63`) | **A** | 워커 재시작 후 커밋된 offset부터 재개 → lag에 쌓인 메시지 전부 재처리. Scenario A의 복구 동작 핵심 |
+| `session.timeout.ms` | 미설정 → KafkaJS 기본값 | **A** | `pkill -f "workers/interbank-gateway"` 직후 세션 타임아웃 동안은 브로커가 컨슈머를 살아있다고 판단 → 그 사이엔 lag만 누적, 리밸런스 없음. 실행 전 실제 값(`kafka-consumer-groups.sh --describe`) 확인 권장 |
+| `group.instance.id` | 미설정 (dynamic membership) | **A·D** | 워커 재시작/scale 시마다 리밸런스 발생. static membership 설정 시 동일 ID로 재시작하면 즉시 파티션 복귀 → 복구 시간 단축 가능 (현재는 미적용) |
 | `auto.commit` | eachMessage 완료 후 자동 커밋 (KafkaJS 기본) | **A** | 워커 kill 시 처리 중이던 메시지는 커밋 안 됨 → 재시작 후 재처리 (at-least-once 보장) |
-| `max.poll.interval.ms` | `300000ms` (기본 5분) | **C** | settlement-consumer가 DB 트랜잭션 1건 처리에 오래 걸리면 이 값 초과 시 그룹 퇴출. 500 VU 과부하 시 DB 락 대기가 길어지면 발생 가능 |
+| `max.poll.interval.ms` | `300000ms` (기본 5분) | **C** | Gateway가 DB 쓰기(`SETTLEMENT_PENDING` 기록 등) 1건에 오래 걸리면 이 값 초과 시 그룹 퇴출. 고VU 과부하 시 DB 락 대기가 길어지면 발생 가능 |
+
+> **`npm run kafka:all` 주의**: `concurrently --kill-others`로 gateway·simulator·inbound·bokwire 4개를 묶어서
+> 실행하므로, 이 중 하나(gateway)만 kill해도 `--kill-others`가 나머지 3개까지 전부 종료시킨다.
+> A·D 시나리오처럼 **게이트웨이만 선택적으로 죽였다 살리려면 반드시 `npm run kafka:gateway`를 별도
+> 터미널에서 단독 실행**하고, 나머지 워커(simulator/inbound/bokwire)도 각자 별도 터미널에서 개별 실행해야 한다.
 
 ### 시나리오별 핵심 설정 요약
 
-- **Scenario A (컨슈머 Kill)**: `fromBeginning: false` + auto-commit → at-least-once 복구 동작 확인. `session.timeout.ms=30s` → kill 직후 30초 지연 예상.
+- **Scenario A (Gateway Kill)**: `fromBeginning: false` + auto-commit → at-least-once 복구 동작 확인. kill 직후 session timeout만큼 지연 예상. 재시작 후 `SETTLEMENT_PENDING`까지만 확정되고, 최종 `COMPLETED/FAILED`는 별도로 `npm run worker:settlement-batch`를 돌려야 나온다는 점이 예전과 다름.
 - **Scenario B (브로커 1개 다운)**: `acks: all` + `retry 60×3s` + `min.insync.replicas=2` → 브로커 1개 다운 중에도 2-ISR 응답으로 프로듀서 성공. k6 `10s timeout` vs Kafka `retry 3min` 불일치로 HTTP 실패가 실제 데이터 손실 없이도 발생 가능.
 - **Scenario C (최대 TPS)**: Kafka 설정보다 **DB 행 락**이 병목. `max.poll.interval.ms` 초과로 consumer 리밸런스 발생 여부 관찰.
 
@@ -47,8 +65,10 @@
 ```bash
 docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server 192.168.219.110:9092 \
-  --describe --topic interbank-transfer-settlements
+  --describe --topic interbank-transfer-requests
 # 기대: PartitionCount: 3, ReplicationFactor: 3
+# (interbank-transfer-settlements 토픽은 배치 정산 전환 이후 더 이상 사용하지 않음.
+#  전체 9개 토픽 목록은 lib/kafka.ts TOPICS 또는 docs/kafka-interbank-transfer.md 참고)
 ```
 
 **Step 0-B: 잔액 증액 (Pi PostgreSQL)**
@@ -58,13 +78,27 @@ docker exec -it postgres psql -U postgres fin-mate -c \
    WHERE account_id = '9c7a7f9f-3ab9-4198-bb9d-a63055c656f1';"
 ```
 
-**Step 0-C: 서버 + 워커 기동 (로컬 PC, 터미널 2개)**
+**Step 0-C: 서버 + 워커 기동 (로컬 PC, 터미널 5개)**
+
+Scenario A·D는 게이트웨이만 선택적으로 kill/재시작해야 하므로 `npm run kafka:all`(묶음 실행,
+`--kill-others`로 하나 죽으면 전부 죽음)을 쓰지 않고 워커별로 개별 터미널에서 실행한다.
+Scenario B·C만 실행할 경우엔 `npm run kafka:all` 그대로 써도 무방하다.
+
 ```bash
 # 터미널 1
 npm run dev
 
-# 터미널 2
-npm run kafka:all
+# 터미널 2 — 공동망 Gateway (A·D에서 이 터미널만 kill/재시작)
+npm run kafka:gateway
+
+# 터미널 3 — B은행 시뮬레이터
+npm run kafka:simulator
+
+# 터미널 4 — 인바운드 컨슈머
+npm run kafka:inbound
+
+# 터미널 5 — BOK-Wire 게이트웨이 (10억 초과 이체 경로, 이 테스트 시나리오와는 무관하지만 앱 기동에 필요)
+npm run kafka:bokwire
 ```
 
 **Step 0-D: 환경 변수 설정**
@@ -85,26 +119,32 @@ export FROM_ACCOUNT_ID=9c7a7f9f-3ab9-4198-bb9d-a63055c656f1
 
 ---
 
-### 시나리오 A: 정산 처리 워커 강제 종료 후 자동 복구
+### 시나리오 A: 공동망 Gateway 강제 종료 후 자동 복구
 
 **무엇을 확인하는가**
-타행 이체 요청을 처리하는 정산 워커(settlement-consumer)를 테스트 도중 강제로 종료했을 때 시스템이 어떻게 반응하는지 확인한다.
-Kafka는 워커가 30초간 응답이 없으면 해당 워커가 처리하던 메시지 대기열(파티션)을 살아있는 워커에게 자동으로 넘긴다. 워커를 재시작하면 종료되어 있던 동안 쌓인 미처리 메시지를 순서대로 모두 소화(drain)한다.
+타행 이체 요청을 라우팅/정산 확정하는 **공동망 Gateway**(`workers/interbank-gateway.ts`, 옛 `settlement-consumer`를
+대체)를 테스트 도중 강제로 종료했을 때 시스템이 어떻게 반응하는지 확인한다.
+Kafka는 워커가 일정 시간(session timeout) 응답이 없으면 해당 워커가 처리하던 메시지 대기열(파티션)을 살아있는
+워커에게 자동으로 넘긴다. 워커를 재시작하면 종료되어 있던 동안 쌓인 미처리 메시지를 순서대로 모두 소화(drain)한다.
 핵심 질문: **워커가 죽어있는 동안에도 사용자 이체 요청은 정상 접수되는가?**
 
+> 주의: Gateway 재시작으로 drain이 끝나도 거래 상태는 `SETTLEMENT_PENDING`까지만 간다. 최종
+> `COMPLETED/FAILED` 확정은 별도 `npm run worker:settlement-batch`(1일 1회 배치)를 실행해야 나온다 —
+> 이 시나리오의 관찰 대상은 어디까지나 "요청 접수/라우팅 lag"이지 최종 정산 완료가 아니다.
+
 ```bash
-# [터미널 3] 미처리 메시지 적체량(lag) 실시간 모니터링 (Pi에서)
+# [터미널 6] 미처리 메시지 적체량(lag) 실시간 모니터링 (Pi에서)
 bash scripts/load-test/watch-lag.sh
 
-# [터미널 4] 부하 테스트 시작 (가상 사용자 200명이 이체 요청 반복)
+# [터미널 7] 부하 테스트 시작 (가상 사용자 200명이 이체 요청 반복)
 k6 run -e BASE_URL=$BASE_URL -e FROM_ACCOUNT_ID=$FROM_ACCOUNT_ID \
   -e SCENARIO=consumer-lag scripts/load-test/k6-overload.js
 
-# 부하 테스트 시작 후 약 1분 30초 뒤 — 정산 워커 강제 종료
-pkill -f "kafka:settlement"
+# 부하 테스트 시작 후 약 1분 30초 뒤 — 공동망 Gateway 강제 종료 (터미널 2 프로세스만 죽음)
+pkill -f "workers/interbank-gateway"
 
-# 약 4분 뒤 — 정산 워커 재시작 (적체된 메시지 소화 시작)
-npm run kafka:settlement
+# 약 4분 뒤 — Gateway 재시작 (적체된 메시지 소화 시작)
+npm run kafka:gateway
 ```
 
 **기록할 수치**
@@ -178,37 +218,43 @@ docker exec -it postgres psql -U postgres fin-mate -c \
 | 단계별(100/300/500명) 처리량 | 동시 사용자 수에 따른 초당 처리 건수 변화 |
 | p95 응답시간 | 전체 요청 중 상위 5%를 제외한 최대 응답 시간 (체감 최악 속도) |
 | 단계별 에러율 | 사용자가 실제로 오류를 만나는 비율 |
-| 최대 메시지 적체량 | 500명 구간에서 정산 워커가 처리하지 못하고 쌓이는 최대 메시지 수 |
+| 최대 메시지 적체량 | 500명 구간에서 공동망 Gateway가 처리하지 못하고 쌓이는 최대 메시지 수 |
 | DB 처리 건수 불일치 | 부하 테스트가 기록한 성공 건수와 DB에 실제 저장된 건수의 차이 |
 
 ---
 
-### 시나리오 D: 정산 워커 증설·축소 시 부하 재분배
+### 시나리오 D: 공동망 Gateway 증설·축소 시 부하 재분배
 
 **무엇을 확인하는가**
-정산 워커(settlement-consumer)의 수를 테스트 도중 1개 → 2개 → 0개 → 1개로 바꾸면서 각 전환 시점에 시스템이 안정적으로 부하를 재분배하는지 확인한다.
+공동망 Gateway(`interbank-gateway-group`)의 인스턴스 수를 테스트 도중 1개 → 2개 → 0개 → 1개로 바꾸면서
+각 전환 시점에 시스템이 안정적으로 부하를 재분배하는지 확인한다. (옛 `settlement-consumer` scale 테스트를
+동일한 목적으로 현재 워커에 대해 재구성한 것.)
 워커 수가 바뀔 때마다 Kafka는 메시지 대기열(파티션) 담당을 자동으로 재배치(리밸런스)한다. 이 재배치는 짧은 순간 처리를 멈추지만 곧 재개된다. 워커가 0개인 구간에서는 메시지가 쌓이기만 하고, 워커가 재시작되면 쌓인 메시지를 모두 순서대로 소화한다.
 핵심 질문: **워커 수가 바뀌는 전환 시점마다 사용자에게 오류가 노출되는가? 워커가 완전히 없는 구간에서 메시지 유실은 발생하는가?**
 
+> `npm run kafka:gateway`를 두 번째 인스턴스로 그대로 한 번 더 띄우면 동일 `groupId`로 조인해 파티션이
+> 재분배된다. 단, 두 인스턴스가 같은 `admin.createTopics()` 호출을 하므로 토픽이 이미 존재하는 상태에서
+> 실행해야 충돌 없이 뜬다 (Step 0-A에서 이미 생성돼 있으면 문제 없음).
+
 ```bash
-# [터미널 3] 미처리 메시지 적체량 실시간 모니터링 (Pi에서)
+# [터미널 6] 미처리 메시지 적체량 실시간 모니터링 (Pi에서)
 bash scripts/load-test/watch-lag.sh
 
-# [터미널 4] 부하 테스트 시작 (가상 사용자 100명 고정, 총 약 9분 30초)
+# [터미널 7] 부하 테스트 시작 (가상 사용자 100명 고정, 총 약 9분 30초)
 k6 run -e BASE_URL=$BASE_URL -e FROM_ACCOUNT_ID=$FROM_ACCOUNT_ID \
   -e SCENARIO=rebalancing scripts/load-test/k6-overload.js
 
-# 테스트 시작 후 1분 — 정산 워커 1개 추가 (워커 2개 운영, 부하 재배치 #1)
-npm run kafka:settlement &
+# 테스트 시작 후 1분 — Gateway 2번째 인스턴스 기동 (워커 2개 운영, 부하 재배치 #1)
+npm run kafka:gateway &
 
-# 테스트 시작 후 3분 — 워커 1번 종료 (워커 1개 운영, 부하 재배치 #2)
-pkill -f "kafka:settlement"
+# 테스트 시작 후 3분 — Gateway 1번 종료 (워커 1개 운영, 부하 재배치 #2)
+pkill -f "workers/interbank-gateway" -o   # 가장 오래된(첫 번째) 프로세스 1개만 종료
 
-# 테스트 시작 후 5분 — 워커 2번도 종료 (워커 0개, 메시지 적체 시작)
-pkill -f "kafka:settlement"
+# 테스트 시작 후 5분 — 남은 Gateway도 종료 (워커 0개, 메시지 적체 시작)
+pkill -f "workers/interbank-gateway"
 
-# 테스트 시작 후 7분 — 워커 재시작 (적체된 메시지 소화 시작, 부하 재배치 #3)
-npm run kafka:settlement
+# 테스트 시작 후 7분 — Gateway 재기동 (적체된 메시지 소화 시작, 부하 재배치 #3)
+npm run kafka:gateway
 ```
 
 **기록할 수치**
@@ -226,7 +272,7 @@ npm run kafka:settlement
 
 1. 토픽 재생성 확인 (`PartitionCount:3, RF:3`)
 2. 잔액 증액 (5억원)
-3. `npm run dev` + `npm run kafka:all` 기동
+3. `npm run dev` 기동 + 워커 기동 (Scenario A·D는 Step 0-C처럼 워커별 개별 터미널, B·C만 할 거면 `npm run kafka:all`도 가능)
 4. Scenario A 실행 + 결과 REPORT.md에 기록
 5. 잔액 재증액 (A에서 소진)
 6. Scenario B 실행 + 결과 기록
@@ -245,6 +291,12 @@ npm run kafka:settlement
 ---
 
 ## Part 3. 실제 테스트 결과
+
+> ⚠️ **아키텍처 변경 전(pre-2026-06-09) 결과 — 참고용**. 아래 수치는 모두 `settlement-consumer`가 존재하던
+> 옛 아키텍처에서 실행됐다. 2026-06-09 배치 정산 전환 이후 컨슈머가 `interbank-gateway`로 바뀌었고
+> 정산 흐름도 `SETTLEMENT_PENDING` + 배치 확정 방식으로 변경됐으므로, 이 수치들을 현재 아키텍처의
+> 성능/내성 지표로 그대로 인용하지 말 것. 현재 아키텍처 기준 재실행 결과는 아직 없음 — Part 1·2의
+> 갱신된 절차(Gateway 대상)로 재측정 필요.
 
 ### Scenario A — 컨슈머 과부하 (Consumer Kill & Recovery)
 
@@ -458,9 +510,12 @@ npm run kafka:settlement
 
 ## Part 4. 추가 분석
 
+> Part 4의 결론(DB 행 락이 병목)은 컨슈머 구현(옛 settlement-consumer vs 현재 interbank-gateway)에
+> 의존하지 않는 아키텍처 독립적 관찰이므로, 배치 정산 전환 이후에도 그대로 유효하다고 판단해 유지한다.
+
 ### 파티션 수 변경 테스트가 불필요한 이유
 
-테스트에서 확인된 실제 병목은 Kafka 처리량이 아니라 **PostgreSQL 행 락 직렬화 (Pi 단일 DB)**다. 파티션을 늘려도 settlement-consumer가 DB에서 막히는 건 동일하다. 결과 수치가 크게 달라지지 않는다.
+테스트에서 확인된 실제 병목은 Kafka 처리량이 아니라 **PostgreSQL 행 락 직렬화 (Pi 단일 DB)**다. 파티션을 늘려도 (구 settlement-consumer든 현재의 interbank-gateway든) 컨슈머가 DB에서 막히는 건 동일하다. 결과 수치가 크게 달라지지 않는다.
 
 파티션 수 변경이 의미 있는 경우:
 

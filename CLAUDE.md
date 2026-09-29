@@ -18,12 +18,13 @@ npx prisma generate  # Regenerate Prisma client after schema changes
 
 **Kafka workers** — all require `--env-file=.env` (already wired in package.json):
 ```bash
-npm run kafka:all        # gateway + simulator + settlement + inbound (concurrently)
-npm run kafka:gateway    # 공동망 게이트웨이
-npm run kafka:simulator  # 타행(B은행) 시뮬레이터
-npm run kafka:settlement # 정산 컨슈머 (FIN-Mate 측)
-npm run kafka:inbound    # 인바운드 입금 컨슈머
-npm run worker:scheduled # 자동이체 워커 (단발성 실행 후 종료)
+npm run kafka:all              # gateway + simulator + inbound + bokwire (concurrently --kill-others — 하나 죽으면 전부 재시작됨)
+npm run kafka:gateway          # 공동망 게이트웨이 (상시 컨슈머, interbank-gateway-group)
+npm run kafka:simulator        # 타행(B은행) 시뮬레이터
+npm run kafka:inbound          # 인바운드 입금 컨슈머
+npm run kafka:bokwire          # BOK-Wire 게이트웨이 (10억 초과 이체 즉시 정산)
+npm run worker:settlement-batch # KFTC 타행이체 배치 정산 — 단발성 실행 후 종료 (cron으로 1일 1회)
+npm run worker:scheduled       # 자동이체 워커 (단발성 실행 후 종료)
 ```
 
 **Environment** (`.env`):
@@ -62,19 +63,23 @@ new PrismaClient({ adapter })
 - Prisma `Decimal`은 직렬화 전 변환 필요: `balance.toFixed(0)`
 
 ### Interbank Transfer (Kafka)
-타행 이체는 Kafka 기반 비동기 9-step 흐름. `lib/kafka.ts`에 토픽 상수(`TOPICS`) 및 싱글턴 Producer(`getProducer()`) 정의.
+타행 이체(10억 이하, KFTC 공동망)는 Kafka 기반 비동기 흐름 + 1일 1회 배치 정산. 10억 초과는 별도 BOK-Wire(RTGS) 경로.
+`lib/kafka.ts`에 토픽 상수(`TOPICS`, 9개) 및 싱글턴 Producer(`getProducer()`) 정의. 상세 흐름은 `docs/kafka-interbank-transfer.md`.
 
 ```
 FIN-Mate(A) → [TRANSFER_REQUESTS] → Gateway → [ROUTED_REQUESTS] → Simulator(B)
-Simulator(B) → [B_RESULTS] → Gateway → [TRANSFER_SETTLEMENTS] → FIN-Mate(A)
+Simulator(B) → [B_RESULTS] → Gateway → DB: transactionStatus=SETTLEMENT_PENDING
+(1일 1회) settlement-batch → COMPLETED/FAILED 확정
 ```
 
-- `workers/interbank-gateway.ts` — 공동망 라우터 역할
-- `workers/settlement-consumer.ts` — A은행(FIN-Mate) 정산 처리
+- `workers/interbank-gateway.ts` — 공동망 라우터. `TRANSFER_REQUESTS`/`B_RECEIVED_ACK`/`B_RESULTS`/`INBOUND_RESULTS` 구독, `SETTLEMENT_PENDING` DB 기록까지 담당 (상시 실행 컨슈머, `npm run kafka:gateway`)
+- `workers/settlement-batch.ts` — `SETTLEMENT_PENDING` 건을 일괄 확정하는 **단발성 배치**(Kafka 컨슈머 아님, DB 폴링). `npm run worker:settlement-batch`, cron으로 1일 1회 실행
+- `workers/bok-wire-gateway.ts` — 10억 초과 이체 즉시 정산(RTGS), `BOK_WIRE_REQUESTS` 구독
 - `workers/inbound-consumer.ts` — 타행→FIN-Mate 입금 처리
 - `interbank-simulator/` — B은행 시뮬레이터 (SQLite `data/other-bank.db` 사용)
 - 자행 이체는 Kafka 없이 DB 트랜잭션으로 즉시 처리 (`app/(main)/transfer/actions.ts`)
 - `lib/interbank-db.ts` — `data/other-bank.db` SQLite 읽기 전용 접근 (타행 계좌 조회용)
+- `npm run kafka:all`은 gateway/simulator/inbound/bokwire를 `concurrently --kill-others`로 묶어 실행 — 하나가 죽으면 전부 재시작됨에 주의 (개별 kill 테스트 시 워커별로 따로 실행할 것)
 
 ### AI Chat (LM Studio)
 `app/api/chat/route.ts` — POST 핸들러. `@ai-sdk/openai`의 `createOpenAI`로 LM Studio OpenAI 호환 API 연결.

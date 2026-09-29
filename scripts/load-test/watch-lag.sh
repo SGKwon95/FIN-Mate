@@ -4,7 +4,7 @@
 # 로컬에서 실행: KAFKA_HOST=192.168.219.110 bash scripts/load-test/watch-lag.sh
 
 BROKER=${KAFKA_BROKER:-192.168.219.110:9092}
-CONSUMER_GROUPS=("fin-mate-settlement-group" "fin-mate-inbound-group")
+CONSUMER_GROUPS=("interbank-gateway-group" "interbank-simulator-group" "fin-mate-inbound-group" "fin-mate-bokwire-group")
 
 # Pi(Docker)에서 실행 중인지 판별
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^kafka$"; then
