@@ -32,6 +32,8 @@ npm run worker:scheduled       # 자동이체 워커 (단발성 실행 후 종�
 - `AUTH_SECRET` — NextAuth 서명 키 (≥32자)
 - `KAFKA_BROKER` — Kafka 브로커 주소 (예: `192.168.219.110:9092`)
 - `OLLAMA_BASE_URL` — LM Studio 서버 주소 (예: `http://192.168.219.1:1234`)
+- `ANTHROPIC_API_KEY` / `ANTHROPIC_FALLBACK_MODEL` — LM Studio 다운 시 채팅 폴백용 (선택)
+- `ANTHROPIC_DAILY_LIMIT` — 폴백 일일 호출 한도 (기본 20)
 
 ## Architecture
 
@@ -91,6 +93,8 @@ createOpenAI({ baseURL: `${OLLAMA_BASE_URL}/v1`, apiKey: 'lm-studio' })
 `components/chat/ChatInterface.tsx` — `@ai-sdk/react`의 `useChat` 훅. 모델 선택 드롭다운, `.txt`/`.md` 문서 업로드(FileReader), 스트리밍 응답. 업로드된 문서 텍스트를 `retrievedContext`로 매 요청에 포함.
 
 **버전 주의**: `ai@4` + `@ai-sdk/react@0` + `@ai-sdk/openai@0` 조합 사용. v5/v6는 `ollama-ai-provider`와 타입 불일치(`LanguageModelV1 vs V2`)로 사용 불가.
+
+**LM Studio 폴백**: `lib/lmstudio-health.ts`로 LM Studio 생존 확인(1.5s 타임아웃) 후, 다운 시 `@ai-sdk/anthropic`으로 Claude(`ANTHROPIC_FALLBACK_MODEL`, 기본 `claude-haiku-4-5-20251001`) 호출. 폴백 시 RAG(쿼리 재작성·임베딩도 LM Studio 의존)는 건너뜀. Anthropic 호출은 계정 무관 하루(KST) `ANTHROPIC_DAILY_LIMIT`(기본 20)회로 제한 — `lib/llm-quota.ts`가 `data/anthropic-usage.txt`(`YYYYMMDD 횟수`, 삭제 시 리셋)에 기록, 초과 시 503. `@ai-sdk/anthropic`은 `0.0.56`으로 exact pin — `LanguageModelV1` 세대 마지막 릴리스로 `@ai-sdk/openai@0.0.72`와 `@ai-sdk/provider@0.0.26`을 공유하므로 latest로 올리지 말 것.
 
 ### Styling
 Tailwind v4 — **`tailwind.config.ts` 없음**. 커스텀 토큰은 `app/globals.css`의 `@theme`에 정의:

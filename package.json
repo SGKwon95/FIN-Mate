@@ -31,6 +31,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "0.0.56",
     "@ai-sdk/openai": "^0.0.72",
     "@ai-sdk/react": "^0.0.70",
     "@auth/prisma-adapter": "^2.11.2",

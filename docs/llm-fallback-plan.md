@@ -107,6 +107,27 @@ ANTHROPIC_FALLBACK_MODEL=claude-haiku-4-5-20251001
 ### 5. `CLAUDE.md`
 기존 "버전 주의"(line 88) 옆에 `@ai-sdk/anthropic@0.0.56`이 `@ai-sdk/provider@0.0.26`/`provider-utils@1.0.22` 세대에 맞춰 의도적으로 고정되었다는 점을 짧게 덧붙여, 이후 누군가 무심코 latest로 올려 `ollama-ai-provider`와 같은 방식으로 깨뜨리는 것을 방지한다.
 
+### 6. 보완 (2026-10-09 구현 시): 폴백 시 RAG 건너뛰기
+
+`rewriteQuery`와 `embedOne`(`lib/embeddings.ts` → `${OLLAMA_BASE_URL}/v1/embeddings`)도 LM Studio를 호출하며 타임아웃이 없다. LM Studio 호스트가 꺼져 있으면 TCP 연결 대기로 수십 초 멈춘 뒤에야 `rag_retrieval_failed`로 빠져, 폴백 응답이 그만큼 늦어진다.
+
+그래서 헬스체크 결과를 `chat_request` 로그 직전이 아니라 **RAG 블록 진입 직전**에 await하고, LM Studio가 다운이면 재작성·임베딩·semantic cache 조회를 건너뛴다(`rag_skipped_lmstudio_down` warn 로그). 헬스체크는 여전히 `cleanedMessages` 직후에 발사되어 상품/업로드 문서 DB 조회와 병렬로 돈다.
+
+- 폴백 시 RAG 문서 검색은 불가 — Anthropic에는 임베딩 API가 없고 벡터 차원도 다르다.
+- 상품/고객 컨텍스트(DB 조회), 수동 업로드 문서, exact-match 캐시는 그대로 동작.
+- `contextSource`가 `'rag'`가 아니게 되므로 LM Studio judge를 쓰는 `evaluateRag`도 자동으로 실행되지 않는다.
+- 503 응답 시 Phoenix span 상태를 `ERROR`로 설정.
+
+### 7. 일일 호출 한도 (2026-10-09)
+
+유료 API 비용 폭주를 막기 위해 Anthropic 폴백 호출을 **계정 무관 전역으로 하루(KST) 20회**로 제한한다(`ANTHROPIC_DAILY_LIMIT`로 조정).
+
+- 카운터: `data/anthropic-usage.txt` — `YYYYMMDD 횟수` 한 줄. 날짜가 오늘과 다르거나 파일이 없으면 0회로 간주하므로 자정 리셋 작업이 필요 없고, 파일을 지우면 즉시 리셋된다. gitignore 대상.
+- `lib/llm-quota.ts`의 `tryConsumeAnthropicQuota()`가 읽기→검사→쓰기를 프로세스 내 Promise 큐로 직렬화하고, 임시 파일에 쓴 뒤 `rename`으로 교체해 파일이 깨지지 않게 한다.
+- `route.ts`는 `streamText` 직전(폴백 경로에서만) 1회를 소모한다. 캐시 hit 등 Anthropic을 부르지 않는 경로는 소모하지 않으며, 호출이 실패해도 환불하지 않는다.
+- 한도 초과 또는 파일 I/O 실패(fail-closed) 시 기존과 같은 문구의 503을 반환하고 `anthropic_daily_limit_exceeded` / `anthropic_quota_check_failed` 로그를 남긴다.
+- 한계: 직렬화는 단일 Node 프로세스 기준이다. Next.js 인스턴스를 여러 개 띄우면 파일 락이 없어 한도를 소폭 초과할 수 있다.
+
 ## 알려진 한계 (의도적으로 범위 밖)
 
 - LM Studio가 헬스체크 통과 후 스트리밍 도중에 끊기는 경우: 폴백 불가 (기존에도 동일한 한계였음).
