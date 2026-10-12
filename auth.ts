@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/prisma"
 import { authConfig } from "@/auth.config"
+import { DEMO_MODE } from "@/lib/demo"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -25,6 +26,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         })
 
         if (!partyAuth || partyAuth.partyAuthStatus !== "ACTIVE") return null
+        // 시연(포트폴리오) 배포는 고객용만 공개 — 직원 계정 로그인 차단
+        if (DEMO_MODE && partyAuth.party.employee) return null
 
         const isValid = await bcrypt.compare(
           credentials.password as string,

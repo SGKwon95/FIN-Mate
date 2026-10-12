@@ -6,6 +6,11 @@ import { injectTraceContext } from "@/lib/kafka-otel"
 
 const OWN_BANK_CODE = "004"
 
+// Kafka 미기동 배포(시연 환경)에서는 타행 이체 차단 — 브로커 없이 producer 연결이 최대 ~3분 재시도로 멈추고,
+// 출금만 된 채 PENDING으로 남기 때문 (lib/kafka.ts retry 설정)
+const INTERBANK_ENABLED = process.env.KAFKA_ENABLED !== "false"
+const INTERBANK_DISABLED_MESSAGE = "시연 환경에서는 타행 이체를 지원하지 않습니다. KB국민은행 계좌로 이체해 주세요."
+
 export type TransferResult =
   | { ok: true; transactionId: string; status: "COMPLETED" | "PENDING" }
   | { ok: false; message: string }
@@ -31,6 +36,8 @@ export async function verifyAccount(input: {
       return { ok: false, message: "존재하지 않는 계좌입니다." }
     return { ok: true, holderName: account.party.partyName }
   }
+
+  if (!INTERBANK_ENABLED) return { ok: false, message: INTERBANK_DISABLED_MESSAGE }
 
   const { findOtherBankAccount } = await import("@/lib/interbank-db")
   const acc = findOtherBankAccount(normalized)
@@ -101,6 +108,7 @@ export async function executeTransfer(input: {
 
   // ── 타행 이체 ────────────────────────────────────────────────
   if (isExternal) {
+    if (!INTERBANK_ENABLED) return { ok: false, message: INTERBANK_DISABLED_MESSAGE }
     const useBokWire = amount > BOK_WIRE_THRESHOLD
     const { findOtherBankAccount } = await import("@/lib/interbank-db")
     if (!findOtherBankAccount(toAccountNumber))

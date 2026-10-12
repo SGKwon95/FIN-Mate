@@ -34,6 +34,7 @@ npm run worker:scheduled       # 자동이체 워커 (단발성 실행 후 종�
 - `OLLAMA_BASE_URL` — LM Studio 서버 주소 (예: `http://192.168.219.1:1234`)
 - `ANTHROPIC_API_KEY` / `ANTHROPIC_FALLBACK_MODEL` — LM Studio 다운 시 채팅 폴백용 (선택)
 - `ANTHROPIC_DAILY_LIMIT` — 폴백 일일 호출 한도 (기본 20)
+- `DEMO_MODE` / `KAFKA_ENABLED` / `MINIO_PUBLIC_URL` — 시연 배포용. `.env.production.local`에 두면 `next build`/`start`에만 적용 (`docs/deploy-demo.md`)
 
 ## Architecture
 
@@ -113,6 +114,9 @@ Server Component에서 `prisma`로 직접 조회 (별도 API 레이어 없음). 
 - `kafka.ts` — KafkaJS 싱글턴 + `TOPICS` 상수 + `getProducer()`
 - `notifications.ts` — 알림 생성 유틸
 - `interbank-db.ts` — SQLite other-bank.db 읽기 전용 접근
+
+## Demo Deployment
+고객용만 공개하는 시연 배포(Pi 상시 + 데스크탑 면접용)는 Kafka·MinIO·Docker 없이 실행하고 `fin-mate-demo` DB를 사용. `scripts/setup-demo-db.ts`로 생성/초기화(`--recreate`), 절차는 `docs/deploy-demo.md`.
 
 ## Seed Data
 테스트 계정: **testuser / Test1234!** — Party: 홍길동, 계좌 3개 (입출금/급여/적금), 입출금 계좌에 거래내역 9건.

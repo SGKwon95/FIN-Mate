@@ -5,6 +5,7 @@ import { ChevronRight, Shield } from "lucide-react"
 import ChatPopup from "@/components/chat/ChatPopup"
 import ProductDetailTabs from "@/components/products/ProductDetailTabs"
 import type { Metadata } from "next"
+import { termsUrl } from "@/lib/terms"
 
 export async function generateMetadata({
   params,
@@ -109,11 +110,10 @@ export default async function ProductDetailPage({
     ? `/products/${productId}/savings-subscribe`
     : null
 
-  const minioBase = `${process.env.MINIO_PUBLIC_URL}/${process.env.MINIO_BUCKET}`
   const termsUrls = isTimeDeposit
-    ? [`${minioBase}/terms/time-deposit.html`]
+    ? [termsUrl('time-deposit.html')]
     : isSavings
-    ? [`${minioBase}/terms/savings.html`]
+    ? [termsUrl('savings.html')]
     : []
 
   // Decimal → number 직렬화

@@ -1,0 +1,22 @@
+# FIN-Mate 시연(포트폴리오) 서비스 — Raspberry Pi systemd 유닛
+# 설치: sudo cp deploy/fin-mate.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now fin-mate
+# 로그: journalctl -u fin-mate -f
+[Unit]
+Description=FIN-Mate (demo)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+# data/(Claude 호출 카운터)를 process.cwd() 기준으로 찾으므로 반드시 저장소 루트
+WorkingDirectory=/home/pi/FIN-Mate
+Environment=NODE_ENV=production
+Environment=PORT=3000
+# nvm으로 Node를 설치했다면 절대경로로 바꿀 것 (which npm)
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
