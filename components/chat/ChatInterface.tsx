@@ -120,7 +120,8 @@ export default function ChatInterface({
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (!isLoading && input.trim() && modelId) {
+      // modelId가 없어도(LM Studio 미연결) 전송 허용 — 서버가 Claude 폴백으로 처리
+      if (!isLoading && input.trim()) {
         handleSubmit(e as unknown as React.FormEvent)
       }
     }
@@ -143,7 +144,7 @@ export default function ChatInterface({
             onChange={(e) => setModelId(e.target.value)}
             className="text-sm border border-kb-gray-border rounded-lg px-2.5 py-1.5 bg-kb-gray-light text-kb-navy focus:outline-none focus:ring-2 focus:ring-kb-yellow cursor-pointer font-medium max-w-[140px]"
           >
-            {models.length === 0 && <option value="">LM Studio 미연결</option>}
+            {models.length === 0 && <option value="">기본 모델</option>}
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
@@ -366,7 +367,7 @@ export default function ChatInterface({
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim() || !modelId}
+            disabled={isLoading || !input.trim()}
             className="w-10 h-10 rounded-xl bg-kb-navy text-white flex items-center justify-center shrink-0 hover:bg-kb-navy-light disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             aria-label="전송"
           >
