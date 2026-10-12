@@ -54,3 +54,6 @@ __pycache__
 
 # logs
 logs
+# Anthropic 폴백 일일 호출 카운터 (lib/llm-quota.ts)
+/data/anthropic-usage.txt
+/data/anthropic-usage.txt.tmp

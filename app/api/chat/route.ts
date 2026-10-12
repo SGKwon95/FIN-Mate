@@ -1,6 +1,9 @@
 import { streamText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
+import { createAnthropic } from '@ai-sdk/anthropic'
 import { logger } from '@/lib/logger'
+import { isLmStudioReachable } from '@/lib/lmstudio-health'
+import { tryConsumeAnthropicQuota, ANTHROPIC_DAILY_LIMIT } from '@/lib/llm-quota'
 import { retrieveChunksHybrid, chunksToContext, type RetrievedChunk } from '@/lib/rag'
 import { embedOne } from '@/lib/embeddings'
 import { rewriteQuery } from '@/lib/query-rewrite'
@@ -281,6 +284,9 @@ export async function POST(req: Request) {
     (m: { role: string; content: string }) => !(m.role === 'assistant' && !m.content?.trim())
   )
 
+  // LM Studio 헬스체크 — 아래 DB 조회와 병렬로 실행, 결과는 RAG 진입 직전에 await
+  const lmStudioHealthPromise = isLmStudioReachable()
+
   const userQuestion = cleanedMessages.findLast(
     (m: { role: string }) => m.role === 'user',
   )?.content ?? ''
@@ -391,7 +397,12 @@ export async function POST(req: Request) {
     }
   }
 
-  if (!finalContext && useRag) {
+  // 쿼리 재작성·임베딩도 LM Studio를 호출하므로, 다운 시 RAG(semantic cache 포함)를 건너뜀
+  const lmStudioUp = await lmStudioHealthPromise
+
+  if (!finalContext && useRag && !lmStudioUp) {
+    logger.warn({ event: 'rag_skipped_lmstudio_down' }, 'LM Studio 응답 없음 — RAG 검색 건너뜀')
+  } else if (!finalContext && useRag) {
     try {
       if (userQuestion) {
         // 쿼리 재작성: 단어형·구어체를 검색 최적화 문장으로 변환 (검색 전용, 캐시 키·UI는 원문 유지)
@@ -464,19 +475,27 @@ export async function POST(req: Request) {
     : ragChunkCount > 0 ? 'rag'
     : 'none'
 
+  const anthropicFallbackModel = process.env.ANTHROPIC_FALLBACK_MODEL ?? 'claude-haiku-4-5-20251001'
+  const effectiveModelId = lmStudioUp ? (modelId ?? 'local-model') : anthropicFallbackModel
+
   logger.info({
     event: 'chat_request',
-    modelId: modelId ?? 'local-model',
+    modelId: effectiveModelId,
+    provider: lmStudioUp ? 'lmstudio' : 'anthropic_fallback',
     contextSource,
     ragChunkCount,
     contextSize: finalContext ? Buffer.byteLength(finalContext, 'utf8') : 0,
     messageCount: messages?.length ?? 0,
   }, 'chat request')
+  if (!lmStudioUp) {
+    logger.warn({ event: 'lmstudio_unreachable' }, 'LM Studio 응답 없음 — Anthropic 폴백으로 전환')
+  }
 
   const lmstudio = createOpenAI({
     baseURL: `${process.env.OLLAMA_BASE_URL ?? 'http://localhost:1234'}/v1`,
     apiKey: 'lm-studio',
   })
+  const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
   // ── 시스템 프롬프트 결정 ────────────────────────────────────
   let systemPrompt: string
@@ -599,7 +618,7 @@ ${LANGUAGE_RULE}`
   // Phoenix OpenInference 속성 — kind/status 정상 표시
   activeSpan?.setAttributes({
     'openinference.span.kind': 'LLM',
-    'llm.model_name': modelId ?? 'local-model',
+    'llm.model_name': effectiveModelId,
     'input.value': userQuestion,
     'llm.invocation_parameters': JSON.stringify({ temperature: 0.05 }),
   })
@@ -677,12 +696,35 @@ ${LANGUAGE_RULE}`
     ]
   }
 
+  if (!lmStudioUp && !process.env.ANTHROPIC_API_KEY) {
+    logger.error({ event: 'no_llm_available' }, 'LM Studio 및 Anthropic 폴백 모두 사용 불가')
+    activeSpan?.setStatus({ code: SpanStatusCode.ERROR })
+    return new Response('AI 서비스에 일시적으로 연결할 수 없습니다. 잠시 후 다시 시도해주세요.', { status: 503 })
+  }
+
+  // Anthropic 폴백 일일 한도 (전역) — 실제 호출 직전에만 소모
+  if (!lmStudioUp) {
+    const quota = await tryConsumeAnthropicQuota().catch((err) => {
+      logger.error({ event: 'anthropic_quota_check_failed', err: String(err) }, 'Anthropic 쿼터 확인 실패')
+      return { allowed: false, used: -1 }  // 파일 I/O 실패 시 fail-closed (비용 보호 우선)
+    })
+    if (!quota.allowed) {
+      logger.warn({ event: 'anthropic_daily_limit_exceeded', used: quota.used, limit: ANTHROPIC_DAILY_LIMIT }, 'Anthropic 일일 호출 한도 초과')
+      activeSpan?.setStatus({ code: SpanStatusCode.ERROR })
+      return new Response('AI 서비스에 일시적으로 연결할 수 없습니다. 잠시 후 다시 시도해주세요.', { status: 503 })
+    }
+    logger.info({ event: 'anthropic_quota_consumed', used: quota.used, limit: ANTHROPIC_DAILY_LIMIT }, 'Anthropic 폴백 호출')
+  }
+
   const result = streamText({
-    model: lmstudio(modelId || 'local-model'),
+    model: lmStudioUp ? lmstudio(modelId || 'local-model') : anthropic(anthropicFallbackModel),
     system: systemPrompt,
     messages: [...fewShotMessages, ...cleanedMessages],
     temperature: 0.05,  // 금융 정보는 낮은 temperature로 할루시네이션 억제
     experimental_telemetry: { isEnabled: true, functionId: 'fin-mate-chat' },
+    onError: lmStudioUp ? undefined : ({ error }) => {
+      logger.error({ event: 'anthropic_fallback_stream_error', err: String(error) }, 'Anthropic 폴백 스트리밍 실패')
+    },
   })
 
   // RAG 캐시 저장 (fire-and-forget, 스트리밍 완료 후)
@@ -706,13 +748,13 @@ ${LANGUAGE_RULE}`
   // RAG 평가 → Phoenix 어노테이션 (fire-and-forget, RAG 컨텍스트 사용 시에만)
   if (contextSource === 'rag' && spanId && userQuestion && finalContext) {
     result.text.then(async (answer) => {
-      const evalResult = await evaluateRag(userQuestion, finalContext, answer, modelId ?? 'qwen2.5-14b-instruct')
+      const evalResult = await evaluateRag(userQuestion, finalContext, ragChunks, answer, modelId ?? 'qwen2.5-14b-instruct')
 
       const PHOENIX = process.env.PHOENIX_ENDPOINT ?? 'http://localhost:6006'
       const annotations = [
-        { name: 'context_relevance', score: evalResult.contextRelevance },
         { name: 'faithfulness',      score: evalResult.faithfulness },
-        { name: 'answer_relevance',  score: evalResult.answerRelevance },
+        { name: 'answer_relevancy',  score: evalResult.answerRelevancy },
+        { name: 'context_precision', score: evalResult.contextPrecision },
       ].map(({ name, score }) => ({
         span_id:        spanId,
         name,
@@ -734,9 +776,9 @@ ${LANGUAGE_RULE}`
       logger.info({
         event: 'rag_eval_annotated',
         spanId,
-        contextRelevance: evalResult.contextRelevance,
         faithfulness:     evalResult.faithfulness,
-        answerRelevance:  evalResult.answerRelevance,
+        answerRelevancy:  evalResult.answerRelevancy,
+        contextPrecision: evalResult.contextPrecision,
       }, 'Phoenix 어노테이션 전송 완료')
     }).catch((err) =>
       logger.warn({ event: 'rag_eval_failed', err: String(err) }, 'RAG 평가 실패'),

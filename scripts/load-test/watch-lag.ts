@@ -4,7 +4,7 @@
  */
 import { kafka } from '@/lib/kafka'
 
-const CONSUMER_GROUPS = ['fin-mate-settlement-group', 'fin-mate-inbound-group']
+const CONSUMER_GROUPS = ['interbank-gateway-group', 'interbank-simulator-group', 'fin-mate-inbound-group', 'fin-mate-bokwire-group']
 
 async function printLag(admin: ReturnType<typeof kafka.admin>) {
   console.log(`\n=== ${new Date().toTimeString().slice(0, 8)} ===`)

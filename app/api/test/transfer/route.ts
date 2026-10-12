@@ -4,11 +4,15 @@ import { verifyAccount } from '@/lib/transfer-execute'
 import { getProducer, TOPICS } from '@/lib/kafka'
 import { toKSTDateCode } from '@/lib/formatters'
 import { injectTraceContext } from '@/lib/kafka-otel'
+import { blockInDemo } from '@/lib/demo'
 
 const OWN_BANK_CODE = '004'
 const TEST_NAME = '[테스트]'
 
 export async function GET(req: NextRequest) {
+  const blocked = blockInDemo()
+  if (blocked) return blocked
+
   const { searchParams } = req.nextUrl
   const action = searchParams.get('action')
 
@@ -55,6 +59,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = blockInDemo()
+  if (blocked) return blocked
+
   const body = await req.json()
 
   if (body.action === 'simulate-inbound') {

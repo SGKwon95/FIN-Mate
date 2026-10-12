@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { notFound, redirect } from "next/navigation"
 import SavingsWizard from "./SavingsWizard"
 import type { Metadata } from "next"
+import { termsUrl } from "@/lib/terms"
 
 export const metadata: Metadata = { title: "적금 가입" }
 
@@ -70,7 +71,7 @@ export default async function SavingsSubscribePage({
         maxAmount: Number(product.depositDetail!.maxAmount ?? 1_000_000),
         minPeriodMonths: product.depositDetail!.minPeriodMonths ?? 6,
         maxPeriodMonths: product.depositDetail!.maxPeriodMonths ?? 36,
-        termsUrl: `${process.env.MINIO_PUBLIC_URL}/${process.env.MINIO_BUCKET}/terms/savings.html`,
+        termsUrl: termsUrl('savings.html'),
       }}
       accounts={serialized}
     />

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { spawn, type ChildProcess } from 'child_process'
+import { blockInDemo } from '@/lib/demo'
 
 const g = globalThis as typeof globalThis & { _kafkaProc?: ChildProcess }
 
@@ -8,10 +9,16 @@ function isRunning() {
 }
 
 export async function GET() {
+  const blocked = blockInDemo()
+  if (blocked) return blocked
+
   return NextResponse.json({ running: isRunning(), pid: g._kafkaProc?.pid ?? null })
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = blockInDemo()
+  if (blocked) return blocked
+
   const { action } = await req.json()
 
   if (action === 'start') {
